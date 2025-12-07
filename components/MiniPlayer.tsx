@@ -4,12 +4,17 @@ import { usePlayer } from '../context/PlayerContext';
 import { GlassCard } from './ui/GlassCard';
 import { Icon } from './Icons';
 import { PlayPauseButton } from './PlayerControls';
+import { FALLBACK_COVER } from '../constants';
 
 export const MiniPlayer: React.FC = () => {
   const { currentBookId, getBook, openFullScreen, isPlaying } = usePlayer();
   const book = getBook(currentBookId);
 
   if (!book) return null;
+
+  const handleCoverError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    e.currentTarget.src = FALLBACK_COVER;
+  };
 
   return (
     <div className="fixed bottom-[80px] md:bottom-6 left-4 right-4 md:left-64 md:right-8 z-40 transition-all duration-300">
@@ -23,6 +28,7 @@ export const MiniPlayer: React.FC = () => {
             alt={book.title}
             className="w-10 h-10 rounded-md object-cover animate-[spin_10s_linear_infinite]"
             style={{ animationPlayState: isPlaying ? 'running' : 'paused' }}
+            onError={handleCoverError}
           />
           <div className="flex flex-col overflow-hidden">
             <span className="text-sm font-bold truncate text-slate-800 dark:text-white">{book.title}</span>

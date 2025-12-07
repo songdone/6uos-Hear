@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { Book, PlayerState, Chapter, Series, Bookmark, HistoryEntry, Track, MetadataProvider, ToastMessage, ScrapeConfig } from '../types';
-import { STORAGE_KEYS, DEFAULT_BOOKS, MOCK_SERIES } from '../constants';
+import { STORAGE_KEYS, DEFAULT_BOOKS, MOCK_SERIES, FALLBACK_COVER } from '../constants';
 import { useAuth } from './AuthContext';
 
 interface PlayerContextType extends PlayerState {
@@ -159,7 +159,7 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           id: b.id.toString(),
           title: b.title,
           author: b.author || 'Unknown',
-          coverUrl: b.coverUrl || 'https://placehold.co/400x400',
+          coverUrl: b.coverUrl || FALLBACK_COVER,
           duration: b.duration || accumulatedTime,
           progress,
           addedAt: new Date(b.createdAt).getTime(),
