@@ -61,6 +61,7 @@ class LibraryScanner {
   async scanFolder(folderPath, config = {}) {
     const relativePath = path.relative(this.libraryPath, folderPath);
     const folderName = path.basename(folderPath);
+    const ingestNotes = [];
     
     // Feature: Ignore Patterns
     if (config.ignorePatterns) {
@@ -98,8 +99,17 @@ class LibraryScanner {
     const firstFilePath = path.join(folderPath, audioCandidates[0]);
     let bookMeta = {
       title: folderName,
-      author: 'Unknown'
+      author: 'Unknown',
+      series: undefined,
+      seriesIndex: undefined,
+      narrator: undefined
     };
+
+    const seriesMatch = folderName.match(/(第?)(\d+)[部卷集篇]/);
+    if (seriesMatch) {
+      bookMeta.seriesIndex = parseInt(seriesMatch[2]);
+      ingestNotes.push('Detected series index from folder name');
+    }
 
     // Feature: NFO Priority
     if (config.priorityNfo) {
@@ -121,6 +131,9 @@ class LibraryScanner {
       if (bookMeta.author === 'Unknown') {
           if (id3Tags.common.artist) bookMeta.author = id3Tags.common.artist;
       }
+      if (!bookMeta.narrator && id3Tags.common.performerInfo) {
+          bookMeta.narrator = id3Tags.common.performerInfo;
+      }
 
       // Feature: Extract Embedded Cover
       if (config.extractEmbeddedCover && id3Tags.common.picture && id3Tags.common.picture.length > 0) {
@@ -129,6 +142,7 @@ class LibraryScanner {
           if (!fs.existsSync(coverPath)) {
               fs.writeFileSync(coverPath, pic.data);
               bookMeta.coverUrl = `/stream/cover/${relativePath}/cover.jpg`; // Needs route handler
+              ingestNotes.push('Embedded cover exported');
               console.log(`[Scanner] Extracted embedded cover for ${folderName}`);
           }
       }
@@ -136,18 +150,27 @@ class LibraryScanner {
 
     // 3. Database Sync
     let book = await Book.findOne({ where: { folderPath: relativePath } });
+    let scrapedData = null;
     
     if (!book) {
       // Scrape
-      const scrapedData = await scraper.scrape(bookMeta.title, bookMeta, config);
-      
+      scrapedData = await scraper.scrape(bookMeta.title, bookMeta, config);
+      const reviewNeeded = (scrapedData.scrapeConfidence || 0) < 0.8;
+
       // ✅ 改动 3: 加上 try-catch 防止并发插入时的 "Unique constraint" 报错
       try {
           book = await Book.create({
-            ...scrapedData, 
+            ...scrapedData,
             folderPath: relativePath,
             title: scrapedData.title || bookMeta.title,
-            author: scrapedData.author || bookMeta.author
+            author: scrapedData.author || bookMeta.author,
+            narrator: scrapedData.narrator || bookMeta.narrator,
+            series: scrapedData.series || bookMeta.series,
+            seriesIndex: scrapedData.seriesIndex || bookMeta.seriesIndex,
+            scrapeConfidence: scrapedData.scrapeConfidence,
+            metadataSource: scrapedData.metadataSource,
+            reviewNeeded,
+            ingestNotes: ingestNotes.join('\n')
           });
       } catch (err) {
           if (err.name === 'SequelizeUniqueConstraintError') {
@@ -213,7 +236,12 @@ class LibraryScanner {
 
         if (validAudioFiles.length > 0) {
             await AudioFile.bulkCreate(validAudioFiles);
-            await book.update({ duration: totalDuration });
+            await book.update({
+              duration: totalDuration,
+              scrapeConfidence: book.scrapeConfidence || scrapedData?.scrapeConfidence,
+              metadataSource: book.metadataSource || scrapedData?.metadataSource,
+              ingestNotes: ingestNotes.length > 0 ? ingestNotes.join('\n') : book.ingestNotes
+            });
             return book;
         } else {
             // If valid files are 0 but book was created, maybe keep it or delete it.
