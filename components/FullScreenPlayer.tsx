@@ -6,6 +6,7 @@ import { useTheme } from '../context/ThemeContext';
 import { Icon } from './Icons';
 import { PlayPauseButton, ProgressBar, SpeedControl } from './PlayerControls';
 import { ShareModal } from './ShareModal';
+import { FALLBACK_COVER } from '../constants';
 
 // Optimized Background
 const DynamicBackground = ({ isPlaying, coverUrl }: { isPlaying: boolean, coverUrl: string }) => (
@@ -24,14 +25,14 @@ const DynamicBackground = ({ isPlaying, coverUrl }: { isPlaying: boolean, coverU
 export const FullScreenPlayer: React.FC = () => {
   const { user } = useAuth();
   const { isDarkMode, toggleTheme } = useTheme();
-  const { 
-    isFullScreen, closeFullScreen, currentBookId, getBook, seek, currentTime, 
+  const {
+    isFullScreen, closeFullScreen, currentBookId, getBook, seek, currentTime,
     setSleepTimer, sleepTimer, sleepEndOfChapter, playChapter, 
     isPlaying, toggleLike, zenMode, toggleZenMode, addBookmark,
     lastSeekPosition, undoSeek, ambience, setAmbience, ambienceVolume, setAmbienceVolume,
     abLoop, setABLoop, clearABLoop, vocalBoost, toggleVocalBoost, skipChapter, togglePlay, showToast
   } = usePlayer();
-  
+
   const book = getBook(currentBookId);
   const [activeTab, setActiveTab] = useState<'chapters' | 'characters' | 'ambience' | null>(null);
   const [showSleepMenu, setShowSleepMenu] = useState(false);
@@ -90,7 +91,7 @@ export const FullScreenPlayer: React.FC = () => {
           setTimeout(() => setGestureFeedback(null), 600);
       }
       lastTapRef.current = now;
-  };
+  };  
 
   const handleSleepSet = (minutes: number | null, endOfChapter: boolean = false) => {
       setSleepTimer(minutes, endOfChapter);
@@ -120,6 +121,11 @@ export const FullScreenPlayer: React.FC = () => {
   };
 
   if (!book) return null;
+
+  const safeCover = book.coverUrl || FALLBACK_COVER;
+  const handleCoverError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    e.currentTarget.src = FALLBACK_COVER;
+  };
 
   // --- Driving Mode UI ---
   if (drivingMode) {
@@ -155,7 +161,7 @@ export const FullScreenPlayer: React.FC = () => {
   return (
     <div className={`fixed inset-0 z-[100] flex flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isFullScreen ? 'translate-y-0' : 'translate-y-full'}`}>
       
-      <DynamicBackground isPlaying={isPlaying} coverUrl={book.coverUrl} />
+      <DynamicBackground isPlaying={isPlaying} coverUrl={safeCover} />
       
       {/* Gesture Overlay */}
       <div className="absolute inset-x-0 top-20 bottom-40 md:bottom-52 z-0 flex">
@@ -245,7 +251,7 @@ export const FullScreenPlayer: React.FC = () => {
 
            {/* Cover Art with slight inset to avoid stretching */}
            <div className="absolute inset-[18%] rounded-full overflow-hidden shadow-2xl shadow-black/50">
-                <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover scale-[1.02]" />
+                <img src={safeCover} alt={book.title} className="w-full h-full object-cover scale-[1.02]" onError={handleCoverError} />
            </div>
 
            {/* Center Pin */}

@@ -4,6 +4,8 @@ import { Book, Series } from './types';
 export const APP_NAME = "6uos Hear";
 export const APP_SLOGAN = "留你听书·够 6 才好听"; // CORRECTED
 
+export const FALLBACK_COVER = 'https://placehold.co/600x600?text=No+Cover';
+
 export const STORAGE_KEYS = {
   USER: '6uos_user',
   LIBRARY: '6uos_library',

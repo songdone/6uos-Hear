@@ -18,6 +18,22 @@ class HybridScraper {
     this.headers = {
       'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     };
+
+    this.fallbackCover = 'https://placehold.co/600x600?text=Cover';
+  }
+
+  normalizeCoverUrl(url) {
+    if (!url) return null;
+    const trimmed = String(url).trim();
+    if (!trimmed) return null;
+    if (trimmed.startsWith('//')) return `https:${trimmed}`;
+    if (trimmed.startsWith('/')) return `https:${trimmed}`;
+    if (!/^https?:\/\//i.test(trimmed)) return `https://${trimmed.replace(/^:+/, '')}`;
+    return trimmed.replace(/!op_type=[^&]+/i, '').replace(/\?.*$/, '');
+  }
+
+  safeCover(url) {
+    return this.normalizeCoverUrl(url) || this.fallbackCover;
   }
 
   buildDoubanHeaders() {
@@ -48,7 +64,7 @@ class HybridScraper {
             title: data.title || data.name || data.results?.[0]?.title,
             author: data.author || data.artist || data.results?.[0]?.author,
             description: data.description || data.summary || data.results?.[0]?.description,
-            coverUrl: data.cover || data.image || data.artwork || data.results?.[0]?.cover,
+            coverUrl: this.safeCover(data.cover || data.image || data.artwork || data.results?.[0]?.cover),
             tags: data.tags || data.genre
         };
     } catch (e) {
@@ -79,7 +95,7 @@ class HybridScraper {
       title: item.title || item.name || item.albumTitle || item.collectionName,
       author: item.author || item.artist || item.announcer || item.nickname,
       description: item.description || item.intro || item.summary || item.abstract,
-      coverUrl: item.cover || item.coverUrl || item.cover_path || item.pic || item.artwork,
+      coverUrl: this.safeCover(item.cover || item.coverUrl || item.cover_path || item.pic || item.artwork),
       publishYear: item.year || item.publishYear || item.releaseDate,
       tags: Array.isArray(item.tags) ? item.tags.join(', ') : item.tags || item.category || item.genre
     };
@@ -147,7 +163,7 @@ class HybridScraper {
         title: data.collectionName,
         author: data.artistName,
         description: data.description,
-        coverUrl: data.artworkUrl100?.replace('100x100bb', '600x600bb'), 
+        coverUrl: this.safeCover(data.artworkUrl100?.replace('100x100bb', '600x600bb')),
         publishYear: data.releaseDate ? data.releaseDate.substring(0, 4) : null,
         language: 'zh-cn'
       };
@@ -166,7 +182,7 @@ class HybridScraper {
         title: data.collectionName,
         author: data.artistName,
         description: data.description,
-        coverUrl: data.artworkUrl100?.replace('100x100bb', '600x600bb'),
+        coverUrl: this.safeCover(data.artworkUrl100?.replace('100x100bb', '600x600bb')),
         publishYear: data.releaseDate ? data.releaseDate.substring(0, 4) : null,
         language: 'zh-cn'
       }));
@@ -212,7 +228,7 @@ class HybridScraper {
         title: doc.title,
         author: doc.nickname,
         description: doc.intro,
-        coverUrl: this.sanitizeXimalayaCover(doc.coverPath || doc.cover_url),
+        coverUrl: this.safeCover(this.sanitizeXimalayaCover(doc.coverPath || doc.cover_url)),
         tags: doc.categoryTitle,
         rating: doc.playCount
       }));
@@ -294,7 +310,7 @@ class HybridScraper {
       const publishYear = this.getInfoField($, '出版年');
       const isbn = this.getInfoField($, 'ISBN');
       const description = $('#link-report .intro').first().text().trim() || $('meta[name="description"]').attr('content') || '';
-      const coverUrl = $('#mainpic img').attr('src');
+      const coverUrl = this.safeCover($('#mainpic img').attr('src'));
       const tags = $('#db-tags-section a.tag').map((_, el) => $(el).text().trim()).get().join(', ');
 
       if (!title) return null;
@@ -342,7 +358,7 @@ class HybridScraper {
         title: info.title,
         author: info.authors?.join(', '),
         description: info.description,
-        coverUrl: info.imageLinks?.extraLarge || info.imageLinks?.thumbnail,
+        coverUrl: this.safeCover(info.imageLinks?.extraLarge || info.imageLinks?.thumbnail),
         publishYear: info.publishedDate?.substring(0, 4),
         publisher: info.publisher,
         tags: info.categories?.join(',')
@@ -364,7 +380,7 @@ class HybridScraper {
           title: info.title,
           author: info.authors?.join(', '),
           description: info.description,
-          coverUrl: info.imageLinks?.extraLarge || info.imageLinks?.thumbnail,
+          coverUrl: this.safeCover(info.imageLinks?.extraLarge || info.imageLinks?.thumbnail),
           publishYear: info.publishedDate?.substring(0, 4),
           publisher: info.publisher,
           tags: info.categories?.join(',')
@@ -386,7 +402,7 @@ class HybridScraper {
         title: doc.title,
         author: doc.author_name?.[0],
         publishYear: doc.first_publish_year?.toString(),
-        coverUrl: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg` : null,
+        coverUrl: this.safeCover(doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg` : null),
         publisher: doc.publisher?.[0]
       };
     } catch (e) { return null; }
@@ -404,7 +420,7 @@ class HybridScraper {
         title: doc.title,
         author: doc.author_name?.[0],
         publishYear: doc.first_publish_year?.toString(),
-        coverUrl: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg` : null,
+        coverUrl: this.safeCover(doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg` : null),
         publisher: doc.publisher?.[0]
       }));
     } catch (e) { return []; }
@@ -439,7 +455,7 @@ class HybridScraper {
 
     // Priority 2: Cover Art
     if (!final.coverUrl || final.coverUrl.includes('placehold')) {
-        const coverSource = validSources.find(s => s.source === 'iTunes') || 
+        const coverSource = validSources.find(s => s.source === 'iTunes') ||
                             validSources.find(s => s.source === 'Ximalaya') ||
                             validSources.find(s => s.source === 'GoogleBooks');
         if (coverSource?.coverUrl) final.coverUrl = coverSource.coverUrl;
@@ -459,6 +475,7 @@ class HybridScraper {
         if (authSource) final.author = authSource.author;
     }
 
+    final.coverUrl = this.safeCover(final.coverUrl);
     return final;
   }
 

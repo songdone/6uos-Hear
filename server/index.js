@@ -21,7 +21,14 @@ app.use(cors());
 app.use(express.json());
 
 const LIBRARY_PATH = process.env.LIBRARY_PATH || './mnt/library';
-const UPLOAD_PATH = path.join(LIBRARY_PATH, 'uploads'); 
+const UPLOAD_PATH = path.join(LIBRARY_PATH, 'uploads');
+
+const resolveCoverPath = (relativePath = '') => {
+  const safeBase = path.resolve(LIBRARY_PATH);
+  const target = path.resolve(LIBRARY_PATH, relativePath);
+  if (!target.startsWith(safeBase)) return null;
+  return target;
+};
 
 if (!fs.existsSync(UPLOAD_PATH)) {
     fs.mkdirSync(UPLOAD_PATH, { recursive: true });
@@ -39,6 +46,19 @@ const storage = multer.diskStorage({
   }
 });
 const upload = multer({ storage: storage });
+
+app.get('/stream/cover/*', (req, res) => {
+  const requestedPath = req.params[0];
+  const safePath = resolveCoverPath(requestedPath);
+  if (!safePath) return res.status(400).json({ error: 'Invalid cover path' });
+
+  fs.access(safePath, fs.constants.R_OK, (err) => {
+    if (err) {
+      return res.status(404).json({ error: 'Cover not found' });
+    }
+    res.sendFile(safePath);
+  });
+});
 
 app.use('/api/stream', streamRoutes);
 

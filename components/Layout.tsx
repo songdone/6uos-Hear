@@ -4,7 +4,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { Icon } from './Icons';
 import { MiniPlayer } from './MiniPlayer';
 import { FullScreenPlayer } from './FullScreenPlayer';
-import { APP_SLOGAN } from '../constants'; 
+import { APP_SLOGAN } from '../constants';
 import { useTheme } from '../context/ThemeContext';
 import { usePlayer } from '../context/PlayerContext';
 import { useAuth } from '../context/AuthContext';
@@ -14,23 +14,45 @@ interface LayoutProps {
   children: React.ReactNode;
 }
 
+const NAV_GROUPS = [
+  {
+    title: '听书空间',
+    items: [
+      { to: '/library', label: '资源库', icon: Icon.Library },
+      { to: '/favorites', label: '我的收藏', icon: Icon.Heart },
+      { to: '/collections', label: '系列合集', icon: Icon.Collection },
+      { to: '/authors', label: '作者', icon: Icon.User },
+    ],
+  },
+  {
+    title: '洞察 & 控制',
+    items: [
+      { to: '/stats', label: '数据洞察', icon: Icon.BarChart },
+      { to: '/settings', label: '设置中心', icon: Icon.Settings },
+    ],
+  },
+];
+
+const MOBILE_NAV = [
+  { to: '/library', label: '首页', icon: Icon.Library },
+  { to: '/favorites', label: '收藏', icon: Icon.Heart },
+  { to: '/collections', label: '合集', icon: Icon.Collection },
+  { to: '/stats', label: '数据', icon: Icon.BarChart },
+  { to: '/settings', label: '设置', icon: Icon.Settings },
+];
+
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const { isDarkMode, toggleTheme } = useTheme();
   const { dailyProgress, dailyGoal, isPlaying } = usePlayer();
   const { logout, user } = useAuth();
   const location = useLocation();
 
-  const getPageTitle = () => {
-    switch(location.pathname) {
-      case '/library': return '资源库';
-      case '/favorites': return '我的收藏';
-      case '/authors': return '作者';
-      case '/collections': return '系列合集';
-      case '/stats': return '数据统计';
-      case '/settings': return '设置';
-      default: return '6uos Hear';
-    }
-  };
+  const navTitleMap: Record<string, string> = NAV_GROUPS.flatMap((group) => group.items).reduce(
+    (acc, item) => ({ ...acc, [item.to]: item.label }),
+    { '/': '6uos Hear' }
+  );
+
+  const getPageTitle = () => navTitleMap[location.pathname] || '6uos Hear';
 
   const goalPercent = Math.min((dailyProgress / (dailyGoal * 60)) * 100, 100);
 
@@ -106,34 +128,31 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             </div>
         </div>
         
-        <nav className="flex-1 px-4 space-y-2 overflow-y-auto scrollbar-hide">
-           <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 mt-2 px-4">我的媒体库</div>
-           <NavLink to="/library" className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 ${isActive ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/30 translate-x-1' : 'text-slate-400 hover:bg-white/10 hover:translate-x-1'}`}>
-              <Icon.Library />
-              <span className="font-medium">资源库</span>
-           </NavLink>
-           <NavLink to="/favorites" className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 ${isActive ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/30 translate-x-1' : 'text-slate-400 hover:bg-white/10 hover:translate-x-1'}`}>
-              <Icon.Heart />
-              <span className="font-medium">我的收藏</span>
-           </NavLink>
-           <NavLink to="/authors" className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 ${isActive ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/30 translate-x-1' : 'text-slate-400 hover:bg-white/10 hover:translate-x-1'}`}>
-              <Icon.User />
-              <span className="font-medium">作者</span>
-           </NavLink>
-           <NavLink to="/collections" className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 ${isActive ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/30 translate-x-1' : 'text-slate-400 hover:bg-white/10 hover:translate-x-1'}`}>
-              <Icon.Collection />
-              <span className="font-medium">系列合集</span>
-           </NavLink>
-           
-           <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 mt-6 px-4">系统</div>
-           <NavLink to="/stats" className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 ${isActive ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/30 translate-x-1' : 'text-slate-400 hover:bg-white/10 hover:translate-x-1'}`}>
-              <Icon.BarChart />
-              <span className="font-medium">数据统计</span>
-           </NavLink>
-           <NavLink to="/settings" className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 ${isActive ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/30 translate-x-1' : 'text-slate-400 hover:bg-white/10 hover:translate-x-1'}`}>
-              <Icon.Settings />
-              <span className="font-medium">设置</span>
-           </NavLink>
+        <nav className="flex-1 px-4 space-y-4 overflow-y-auto scrollbar-hide">
+          {NAV_GROUPS.map((group) => (
+            <div key={group.title} className="space-y-2">
+              <div className="text-xs font-bold text-slate-400 uppercase tracking-wider px-4 flex items-center justify-between">
+                <span>{group.title}</span>
+                <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/60" />
+              </div>
+              {group.items.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) =>
+                    `flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 ${
+                      isActive
+                        ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/30 translate-x-1'
+                        : 'text-slate-400 hover:bg-white/10 hover:translate-x-1'
+                    }`
+                  }
+                >
+                  <item.icon />
+                  <span className="font-medium">{item.label}</span>
+                </NavLink>
+              ))}
+            </div>
+          ))}
         </nav>
 
         <div className="p-4 border-t border-white/20">
@@ -173,30 +192,18 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
 
       {/* Mobile Bottom Nav */}
       <nav className={`md:hidden fixed bottom-0 left-0 right-0 h-[80px] border-t border-white/10 z-20 flex justify-around items-start pt-3 px-1 safe-area-pb ${user?.preferences.oledMode ? 'bg-black' : 'bg-white/90 dark:bg-black/90 backdrop-blur-2xl'}`}>
-         <NavLink to="/library" className={({isActive}) => `flex flex-col items-center gap-1 transition-colors ${isActive ? 'text-cyan-500' : 'text-slate-400'}`}>
-            <Icon.Library className="w-6 h-6" />
-            <span className="text-[10px] font-medium">首页</span>
-         </NavLink>
-         <NavLink to="/favorites" className={({isActive}) => `flex flex-col items-center gap-1 transition-colors ${isActive ? 'text-cyan-500' : 'text-slate-400'}`}>
-            <Icon.Heart className="w-6 h-6" />
-            <span className="text-[10px] font-medium">收藏</span>
-         </NavLink>
-         <NavLink to="/authors" className={({isActive}) => `flex flex-col items-center gap-1 transition-colors ${isActive ? 'text-cyan-500' : 'text-slate-400'}`}>
-            <Icon.User className="w-6 h-6" />
-            <span className="text-[10px] font-medium">作者</span>
-         </NavLink>
-         <NavLink to="/stats" className={({isActive}) => `flex flex-col items-center gap-1 transition-colors ${isActive ? 'text-cyan-500' : 'text-slate-400'}`}>
-            <Icon.BarChart className="w-6 h-6" />
-            <span className="text-[10px] font-medium">数据</span>
-         </NavLink>
-         <NavLink to="/collections" className={({isActive}) => `flex flex-col items-center gap-1 transition-colors ${isActive ? 'text-cyan-500' : 'text-slate-400'}`}>
-            <Icon.Collection className="w-6 h-6" />
-            <span className="text-[10px] font-medium">合集</span>
-         </NavLink>
-         <NavLink to="/settings" className={({isActive}) => `flex flex-col items-center gap-1 transition-colors ${isActive ? 'text-cyan-500' : 'text-slate-400'}`}>
-            <Icon.Settings className="w-6 h-6" />
-            <span className="text-[10px] font-medium">设置</span>
-         </NavLink>
+        {MOBILE_NAV.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            className={({ isActive }) =>
+              `flex flex-col items-center gap-1 transition-colors ${isActive ? 'text-cyan-500' : 'text-slate-400'}`
+            }
+          >
+            <item.icon className="w-6 h-6" />
+            <span className="text-[10px] font-medium">{item.label}</span>
+          </NavLink>
+        ))}
       </nav>
 
       {/* Players - High Z-Index to cover bottom nav */}
