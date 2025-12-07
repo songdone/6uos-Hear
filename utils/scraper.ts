@@ -17,6 +17,18 @@ interface ScraperResult {
 
 const API_BASE = '/api/metadata/search';
 
+export interface ScrapeConfig {
+  useItunes?: boolean;
+  useGoogleBooks?: boolean;
+  useOpenLibrary?: boolean;
+  useXimalaya?: boolean;
+  useDouban?: boolean;
+  customSourceUrl?: string;
+  preferredSources?: string[];
+}
+
+const API_BASE = '/api/metadata/search';
+
 // 优化 1: 高清封面替换逻辑 (iTunes 返回的通常是 100x100)
 const getHighResItunesCover = (url: string) => {
   return url.replace('100x100bb', '600x600bb').replace('60x60bb', '600x600bb');
@@ -86,12 +98,12 @@ export const searchGoogleBooks = async (query: string): Promise<ScraperResult[]>
 };
 
 // 优化 7: 聚合搜索逻辑
-export const scrapeMetadata = async (query: string): Promise<ScraperResult[]> => {
+export const scrapeMetadata = async (query: string, config?: ScrapeConfig): Promise<ScraperResult[]> => {
     try {
       const res = await fetch(API_BASE, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query })
+        body: JSON.stringify({ query, config })
       });
       if (res.ok) {
         const data = await res.json();

@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
-import { Book, PlayerState, Chapter, Series, Bookmark, HistoryEntry, Track, MetadataProvider, ToastMessage } from '../types';
+import { Book, PlayerState, Chapter, Series, Bookmark, HistoryEntry, Track, MetadataProvider, ToastMessage, ScrapeConfig } from '../types';
 import { STORAGE_KEYS, DEFAULT_BOOKS, MOCK_SERIES } from '../constants';
 import { useAuth } from './AuthContext';
 
@@ -115,6 +115,8 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const ambienceAudioRef = useRef<HTMLAudioElement | null>(null); // Dedicated Ambience Player
   const lastProgressTickRef = useRef<number>(Date.now());
   const sleepTriggeredRef = useRef(false);
+
+  const backendProgressThrottleRef = useRef<number>(0);
   
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionStartRef = useRef<number>(Date.now());
@@ -141,13 +143,14 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           return c;
       });
 
+      const progress = b.progress || 0;
       return {
           id: b.id.toString(),
           title: b.title,
           author: b.author || 'Unknown',
           coverUrl: b.coverUrl || 'https://placehold.co/400x400',
           duration: b.duration || accumulatedTime,
-          progress: 0, // Will be merged from local history
+          progress,
           addedAt: new Date(b.createdAt).getTime(),
           description: b.description,
           tracks: tracks,
@@ -157,7 +160,9 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           scrapeConfidence: b.scrapeConfidence,
           metadataSource: b.metadataSource,
           reviewNeeded: b.reviewNeeded,
-          tags: b.tags
+          tags: b.tags,
+          scrapeConfig: b.scrapeConfig,
+          lastPlayedAt: b.lastPlayedAt ? new Date(b.lastPlayedAt).getTime() : null
       };
   };
 
@@ -174,14 +179,14 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               const localLib: Book[] = localLibStr ? JSON.parse(localLibStr) : [];
               const localMap = new Map(localLib.map((b) => [b.id, b]));
 
-              const mergedBooks = remoteBooks.map((rb: Book) => {
+                const mergedBooks = remoteBooks.map((rb: Book) => {
                   if (localMap.has(rb.id)) {
                       const lb = localMap.get(rb.id)!;
                       return {
                           ...rb,
-                          progress: lb.progress,
+                          progress: rb.progress || lb.progress,
                           isLiked: lb.isLiked,
-                          bookmarks: lb.bookmarks
+                          bookmarks: lb.bookmarks,
                       };
                   }
                   return rb;
@@ -636,6 +641,21 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     volume: prev.volume,
                     speed: prev.speed
                 }));
+
+                const now = Date.now();
+                if (now - backendProgressThrottleRef.current > 3000 && prev.currentBookId) {
+                    backendProgressThrottleRef.current = now;
+                    const payload = JSON.stringify({ currentTime: globalTime, duration: book.duration, isFinished: globalTime >= book.duration - 1 });
+                    if (navigator.sendBeacon) {
+                        navigator.sendBeacon(`/api/progress/${prev.currentBookId}`, new Blob([payload], { type: 'application/json' }));
+                    } else {
+                        fetch(`/api/progress/${prev.currentBookId}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: payload
+                        }).catch(() => {});
+                    }
+                }
             }, 1000);
 
             return { ...prev, currentTime: globalTime };

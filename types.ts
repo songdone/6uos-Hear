@@ -55,6 +55,8 @@ export interface Book {
   metadataSource?: string;
   reviewNeeded?: boolean;
   ingestNotes?: string;
+  scrapeConfig?: ScrapeConfig;
+  lastPlayedAt?: number | null;
 
   // Frontend Structure
   chapters?: Chapter[];
@@ -144,6 +146,16 @@ export interface UserPreferences {
     renameTemplate: string; // e.g. "{Author}/{Series}/{Year} - {Title}"
     cleanFilename: boolean; // Remove special chars
   };
+}
+
+export interface ScrapeConfig {
+  useItunes?: boolean;
+  useGoogleBooks?: boolean;
+  useOpenLibrary?: boolean;
+  useXimalaya?: boolean;
+  useDouban?: boolean;
+  customSourceUrl?: string;
+  preferredSources?: string[];
 }
 
 export interface User {

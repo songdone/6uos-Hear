@@ -3,32 +3,35 @@ import React, { useState, useEffect } from 'react';
 import { GlassCard } from './ui/GlassCard';
 import { Icon } from './Icons';
 import { scrapeMetadata } from '../utils/scraper';
-import { Book } from '../types';
+import { Book, ScrapeConfig } from '../types';
 
 interface Props {
     book: Book;
     isOpen: boolean;
     onClose: () => void;
     onApply: (metadata: Partial<Book>) => void;
+    scrapeConfig?: ScrapeConfig;
 }
 
-export const MetadataSearchModal: React.FC<Props> = ({ book, isOpen, onClose, onApply }) => {
+export const MetadataSearchModal: React.FC<Props> = ({ book, isOpen, onClose, onApply, scrapeConfig }) => {
     const [query, setQuery] = useState(book.title);
     const [results, setResults] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
+    const [sources, setSources] = useState<ScrapeConfig>(() => scrapeConfig || { useDouban: true, useXimalaya: true, useItunes: true, useGoogleBooks: true });
 
     // 优化 16: 打开时自动搜索
     useEffect(() => {
         if (isOpen) {
             setQuery(book.title);
-            handleSearch(book.title);
+            setSources(scrapeConfig || { useDouban: true, useXimalaya: true, useItunes: true, useGoogleBooks: true });
+            handleSearch(book.title, scrapeConfig);
         }
-    }, [isOpen, book]);
+    }, [isOpen, book, scrapeConfig]);
 
-    const handleSearch = async (term: string) => {
+    const handleSearch = async (term: string, cfg?: ScrapeConfig) => {
         if (!term.trim()) return;
         setLoading(true);
-        const data = await scrapeMetadata(term);
+        const data = await scrapeMetadata(term, cfg || sources);
         setResults(data);
         setLoading(false);
     };
@@ -59,21 +62,59 @@ export const MetadataSearchModal: React.FC<Props> = ({ book, isOpen, onClose, on
                 </div>
 
                 <div className="flex gap-2 mb-6">
-                    <input 
-                        type="text" 
+                    <input
+                        type="text"
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSearch(query)}
                         className="flex-1 px-4 py-3 rounded-xl bg-slate-100 dark:bg-black/40 border border-transparent focus:border-cyan-500 outline-none dark:text-white"
                         placeholder="输入书名、作者或 ISBN..."
                     />
-                    <button 
+                    <button
                         onClick={() => handleSearch(query)}
                         className="px-6 py-3 bg-cyan-500 hover:bg-cyan-600 text-white font-bold rounded-xl transition-colors disabled:opacity-50"
                         disabled={loading}
                     >
                         {loading ? '搜索中...' : '搜索'}
                     </button>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4">
+                    {[
+                        { key: 'useDouban', label: '豆瓣中文优先' },
+                        { key: 'useXimalaya', label: '喜马拉雅' },
+                        { key: 'useItunes', label: 'iTunes' },
+                        { key: 'useGoogleBooks', label: 'Google Books' },
+                        { key: 'useOpenLibrary', label: 'Open Library' },
+                    ].map(opt => (
+                        <label key={opt.key} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-100 dark:bg-white/5 text-sm text-slate-700 dark:text-slate-200">
+                            <input
+                                type="checkbox"
+                                checked={(sources as any)[opt.key] !== false}
+                                onChange={() => {
+                                    const next = { ...sources, [opt.key]: !(sources as any)[opt.key] };
+                                    setSources(next);
+                                    handleSearch(query, next);
+                                }}
+                            />
+                            {opt.label}
+                        </label>
+                    ))}
+                    <div className="col-span-2 md:col-span-3 flex gap-2 items-center px-3 py-2 rounded-lg bg-slate-50 dark:bg-white/5">
+                        <span className="text-xs font-bold text-slate-500">自定义接口</span>
+                        <input
+                            type="url"
+                            value={sources.customSourceUrl || ''}
+                            onChange={(e) => setSources({ ...sources, customSourceUrl: e.target.value })}
+                            className="flex-1 px-3 py-2 rounded-lg bg-white dark:bg-black/40 border border-transparent focus:border-cyan-500 text-sm"
+                            placeholder="https://example.com/api?q="
+                        />
+                        <button
+                            type="button"
+                            onClick={() => handleSearch(query, sources)}
+                            className="px-3 py-2 text-xs font-bold rounded-lg bg-cyan-500 text-white"
+                        >刷新来源</button>
+                    </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4">

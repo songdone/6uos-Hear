@@ -229,21 +229,26 @@ export const FullScreenPlayer: React.FC = () => {
 
       {/* 2. Visual Area (Flexible Height) */}
       <div className={`relative z-10 flex-1 flex flex-col items-center justify-center px-8 transition-all duration-500 min-h-0 ${activeTab ? 'scale-90 opacity-40 blur-[2px]' : 'scale-100 opacity-100'}`}>
-        <div 
+        <div
             onClick={zenMode ? toggleZenMode : undefined}
             className={`
-                relative transition-all duration-700 group
-                ${zenMode ? 'w-[80vw] h-[80vw] max-w-[500px] max-h-[500px] cursor-pointer' : 'w-[65vw] h-[65vw] max-w-[350px] max-h-[350px] mb-4 md:mb-8'} 
+                relative transition-all duration-700 group aspect-square
+                ${zenMode ? 'w-[80vw] max-w-[500px] cursor-pointer' : 'w-[65vw] max-w-[350px] mb-4 md:mb-8'}
             `}
         >
            {/* Vinyl Record Effect */}
            <div className={`absolute inset-0 rounded-full bg-black shadow-2xl overflow-hidden border-[4px] md:border-[6px] border-black/80 ${isPlaying ? 'animate-[spin_10s_linear_infinite]' : 'animate-[spin_2s_ease-out_forwards_paused]'}`}>
-                <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover opacity-90" />
-                <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent pointer-events-none rounded-full" />
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 bg-slate-900 rounded-full border-2 border-slate-700 flex items-center justify-center">
-                    <div className="w-2 h-2 bg-black rounded-full" />
-                </div>
+                <div className="absolute inset-[12%] bg-black/60 rounded-full shadow-inner"></div>
+                <div className="absolute inset-[24%] bg-black/30 rounded-full"></div>
            </div>
+
+           {/* Cover Art with slight inset to avoid stretching */}
+           <div className="absolute inset-[18%] rounded-full overflow-hidden shadow-2xl shadow-black/50">
+                <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover scale-[1.02]" />
+           </div>
+
+           {/* Center Pin */}
+           <div className="absolute inset-[45%] rounded-full bg-white shadow-lg"></div>
 
            {!zenMode && (
                <div className="absolute -bottom-12 left-0 right-0 flex justify-between items-center w-full px-4">

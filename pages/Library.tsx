@@ -3,7 +3,7 @@ import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { usePlayer } from '../context/PlayerContext';
 import { useAuth } from '../context/AuthContext';
 import { GlassCard } from '../components/ui/GlassCard';
-import { Book } from '../types';
+import { Book, ScrapeConfig } from '../types';
 import { Icon } from '../components/Icons';
 import { ImageUploader } from '../components/ui/ImageUploader';
 import { MetadataSearchModal } from '../components/MetadataSearchModal';
@@ -158,6 +158,36 @@ export const Library: React.FC = () => {
   const [showScraper, setShowScraper] = useState(false);
   const [showRename, setShowRename] = useState(false);
 
+  const defaultScrapeConfig: ScrapeConfig = {
+      useDouban: true,
+      useXimalaya: true,
+      useItunes: true,
+      useGoogleBooks: true,
+      preferredSources: ['Douban', 'Ximalaya', 'iTunes']
+  };
+
+  const persistBook = async (book: Book) => {
+      try {
+          await fetch(`/api/book/${book.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                  title: book.title,
+                  author: book.author,
+                  narrator: book.narrator,
+                  description: book.description,
+                  coverUrl: book.coverUrl,
+                  series: book.series,
+                  seriesIndex: book.seriesIndex,
+                  tags: book.tags,
+                  scrapeConfig: book.scrapeConfig || defaultScrapeConfig
+              })
+          });
+      } catch (e) {
+          console.error('Failed to persist book', e);
+      }
+  };
+
   const filteredBooks = useMemo(() => {
       let result = books.filter(b => 
         b.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -183,10 +213,11 @@ export const Library: React.FC = () => {
         .slice(0, 5);
   }, [books]);
 
-  const handleSaveEdit = (e: React.FormEvent) => {
+  const handleSaveEdit = async (e: React.FormEvent) => {
       e.preventDefault();
       if (editingBook) {
           updateBook(editingBook);
+          await persistBook(editingBook);
           setEditingBook(null);
           showToast("书籍信息已更新", "success");
       }
@@ -194,7 +225,9 @@ export const Library: React.FC = () => {
 
   const handleApplyScrape = (meta: Partial<Book>) => {
       if (editingBook) {
-          setEditingBook(prev => ({ ...prev, ...meta } as Book));
+          const next = { ...editingBook, ...meta } as Book;
+          setEditingBook(next);
+          persistBook(next);
       }
   };
 
@@ -204,6 +237,32 @@ export const Library: React.FC = () => {
       }
   }, [deleteBook]);
 
+  const updateScrapeConfig = (key: keyof ScrapeConfig, value: any) => {
+      setEditingBook(prev => prev ? ({ ...prev, scrapeConfig: { ...(prev.scrapeConfig || defaultScrapeConfig), [key]: value } }) as Book : prev);
+  };
+
+  const handleRescrape = async () => {
+      if (!editingBook) return;
+      const config = editingBook.scrapeConfig || defaultScrapeConfig;
+      try {
+          const res = await fetch(`/api/book/${editingBook.id}/rescrape`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ query: editingBook.title, config, base: { author: editingBook.author, narrator: editingBook.narrator } })
+          });
+          if (res.ok) {
+              const updated = await res.json();
+              const merged = { ...editingBook, ...updated } as Book;
+              setEditingBook(merged);
+              updateBook(merged);
+              showToast('重新刮削完成', 'success');
+          }
+      } catch (e) {
+          console.error(e);
+          showToast('刮削失败，请稍后重试', 'error');
+      }
+  };
+
   // Stable callback for clicking
   const handleBookClick = useCallback((book: Book) => {
       if (editMode) return;
@@ -212,7 +271,7 @@ export const Library: React.FC = () => {
   }, [editMode, playBook, openFullScreen]);
 
   const handleEditClick = useCallback((book: Book) => {
-      setEditingBook(book);
+      setEditingBook({ ...book, scrapeConfig: book.scrapeConfig || defaultScrapeConfig });
   }, []);
 
   return (
@@ -362,6 +421,43 @@ export const Library: React.FC = () => {
                           整理 / 重命名预览
                       </button>
 
+                      <div className="rounded-2xl border border-slate-100 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3 space-y-3">
+                          <div className="flex items-center justify-between">
+                              <div>
+                                  <p className="text-xs font-bold text-slate-500 uppercase">刮削接口与策略</p>
+                                  <p className="text-[11px] text-slate-400">针对该书独立调整中文优先策略</p>
+                              </div>
+                              <button type="button" onClick={handleRescrape} className="px-3 py-1.5 rounded-lg bg-cyan-500 text-white text-xs font-bold shadow-sm">重跑刮削</button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-sm">
+                              {[{key:'useDouban',label:'豆瓣'}, {key:'useXimalaya',label:'喜马拉雅'}, {key:'useItunes',label:'iTunes'}, {key:'useGoogleBooks',label:'Google Books'}, {key:'useOpenLibrary',label:'Open Library'}].map(opt => (
+                                  <label key={opt.key} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white dark:bg-black/40 border border-white/10">
+                                      <input type="checkbox" checked={(editingBook.scrapeConfig || defaultScrapeConfig)[opt.key as keyof ScrapeConfig] !== false}
+                                          onChange={(e) => updateScrapeConfig(opt.key as keyof ScrapeConfig, e.target.checked)} />
+                                      {opt.label}
+                                  </label>
+                              ))}
+                          </div>
+                          <div className="space-y-2">
+                              <label className="text-xs font-bold text-slate-500 uppercase">自定义接口 (JSON)</label>
+                              <input
+                                  type="url"
+                                  value={(editingBook.scrapeConfig || defaultScrapeConfig).customSourceUrl || ''}
+                                  onChange={(e) => updateScrapeConfig('customSourceUrl', e.target.value)}
+                                  className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-black/40 border border-transparent focus:border-cyan-500 outline-none dark:text-white"
+                                  placeholder="https://example.com/api?q="
+                              />
+                              <label className="text-xs font-bold text-slate-500 uppercase">优先顺序 (逗号分隔)</label>
+                              <input
+                                  type="text"
+                                  value={(editingBook.scrapeConfig?.preferredSources || defaultScrapeConfig.preferredSources || []).join(',')}
+                                  onChange={(e) => updateScrapeConfig('preferredSources', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                                  className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-black/40 border border-transparent focus:border-cyan-500 outline-none dark:text-white"
+                                  placeholder="Douban,Ximalaya,iTunes"
+                              />
+                          </div>
+                      </div>
+
                       <div className="flex gap-4 items-start">
                            <div className="w-24 h-24 flex-shrink-0">
                                <ImageUploader 
@@ -409,6 +505,7 @@ export const Library: React.FC = () => {
               isOpen={showScraper}
               onClose={() => setShowScraper(false)}
               onApply={handleApplyScrape}
+              scrapeConfig={editingBook.scrapeConfig || defaultScrapeConfig}
           />
       )}
 

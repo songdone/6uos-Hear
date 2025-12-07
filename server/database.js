@@ -28,7 +28,9 @@ const Book = sequelize.define('Book', {
   metadataSource: { type: DataTypes.STRING },
   scrapeConfidence: { type: DataTypes.FLOAT, defaultValue: 0 },
   reviewNeeded: { type: DataTypes.BOOLEAN, defaultValue: false },
-  ingestNotes: { type: DataTypes.TEXT }
+  ingestNotes: { type: DataTypes.TEXT },
+  scrapeConfig: { type: DataTypes.JSON },
+  lastReviewAt: { type: DataTypes.DATE }
 });
 
 const AudioFile = sequelize.define('AudioFile', {
@@ -50,7 +52,8 @@ const User = sequelize.define('User', {
 const PlaybackProgress = sequelize.define('PlaybackProgress', {
   currentTime: { type: DataTypes.FLOAT, defaultValue: 0 },
   isFinished: { type: DataTypes.BOOLEAN, defaultValue: false },
-  lastPlayedAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
+  lastPlayedAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  duration: { type: DataTypes.FLOAT, defaultValue: 0 }
 });
 
 // Relationships
@@ -60,9 +63,13 @@ AudioFile.belongsTo(Book);
 User.belongsToMany(Book, { through: PlaybackProgress });
 Book.belongsToMany(User, { through: PlaybackProgress });
 
+Book.hasMany(PlaybackProgress, { onDelete: 'CASCADE' });
+PlaybackProgress.belongsTo(Book);
+
 const initDb = async () => {
-  await sequelize.sync({ force: true });
-  console.log('[DB] Database synced successfully.');
+  await sequelize.sync({ alter: true });
+  await User.findOrCreate({ where: { username: 'local' }, defaults: { passwordHash: '', isAdmin: true } });
+  console.log('[DB] Database synced successfully (no data wipe).');
 };
 
 module.exports = { sequelize, Book, AudioFile, User, PlaybackProgress, initDb };

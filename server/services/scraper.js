@@ -202,6 +202,11 @@ class HybridScraper {
     } catch (e) { return []; }
   }
 
+  async fetchDouban(query) {
+    const list = await this.fetchDoubanList(query, 1);
+    return list[0] || null;
+  }
+
   scoreResult(result, query) {
     const normalizedQuery = query.toLowerCase();
     let score = 0.35;
@@ -256,20 +261,27 @@ class HybridScraper {
 
   async scrape(query, localMetadata = {}, config = {}) {
     const enabledSources = [];
-    if (config.useItunes !== false) enabledSources.push(this.fetchItunes(query));
-    if (config.useXimalaya) enabledSources.push(this.fetchXimalaya(query));
-    if (config.useGoogleBooks !== false) enabledSources.push(this.fetchGoogleBooks(query));
-    if (config.useOpenLibrary) enabledSources.push(this.fetchOpenLibrary(query));
-    if (config.customSourceUrl) enabledSources.push(this.fetchCustomSource(query, config.customSourceUrl));
+    const preferred = config.preferredSources || [];
+    const pushSource = (name, fn) => {
+        if (preferred.length === 0 || preferred.includes(name)) enabledSources.push(fn);
+    };
 
-    if (enabledSources.length === 0) {
-        enabledSources.push(this.fetchItunes(query));
-        enabledSources.push(this.fetchXimalaya(query));
+    pushSource('iTunes', this.fetchItunes(query));
+    pushSource('Ximalaya', config.useXimalaya ? this.fetchXimalaya(query) : null);
+    pushSource('GoogleBooks', config.useGoogleBooks !== false ? this.fetchGoogleBooks(query) : null);
+    pushSource('OpenLibrary', config.useOpenLibrary ? this.fetchOpenLibrary(query) : null);
+    pushSource('Douban', config.useDouban !== false ? this.fetchDouban(query) : null);
+    pushSource('Custom', config.customSourceUrl ? this.fetchCustomSource(query, config.customSourceUrl) : null);
+
+    const filteredSources = enabledSources.filter(Boolean);
+    if (filteredSources.length === 0) {
+        filteredSources.push(this.fetchItunes(query));
+        filteredSources.push(this.fetchXimalaya(query));
     }
 
     console.log(`[Scraper] 🚀 Hybrid Scrape: "${query}" running ${enabledSources.length} sources...`);
 
-    const results = await Promise.allSettled(enabledSources);
+    const results = await Promise.allSettled(filteredSources);
     const successResults = results
         .filter(r => r.status === 'fulfilled' && r.value !== null)
         .map(r => r.value);
@@ -285,16 +297,23 @@ class HybridScraper {
 
   async searchAll(query, config = {}) {
     const tasks = [];
-    if (config.useItunes !== false) tasks.push(this.fetchItunesList(query));
-    if (config.useGoogleBooks !== false) tasks.push(this.fetchGoogleBooksList(query));
-    if (config.useOpenLibrary) tasks.push(this.fetchOpenLibraryList(query));
-    if (config.useXimalaya) tasks.push(this.fetchXimalaya(query).then(r => r ? [r] : []));
-    if (config.useDouban) tasks.push(this.fetchDoubanList(query));
-    if (config.customSourceUrl) tasks.push(this.fetchCustomSource(query, config.customSourceUrl).then(r => r ? [r] : []));
+    const preferred = config.preferredSources || [];
+    const pushTask = (name, promiseFactory) => {
+        if (preferred.length === 0 || preferred.includes(name)) tasks.push(promiseFactory);
+    };
 
-    if (tasks.length === 0) tasks.push(this.fetchItunesList(query));
+    pushTask('iTunes', this.fetchItunesList(query));
+    pushTask('GoogleBooks', config.useGoogleBooks !== false ? this.fetchGoogleBooksList(query) : null);
+    pushTask('OpenLibrary', config.useOpenLibrary ? this.fetchOpenLibraryList(query) : null);
+    pushTask('Ximalaya', config.useXimalaya ? this.fetchXimalaya(query).then(r => r ? [r] : []) : null);
+    pushTask('Douban', config.useDouban !== false ? this.fetchDoubanList(query) : null);
+    pushTask('Custom', config.customSourceUrl ? this.fetchCustomSource(query, config.customSourceUrl).then(r => r ? [r] : []) : null);
 
-    const settled = await Promise.allSettled(tasks);
+    const filtered = tasks.filter(Boolean);
+
+    if (filtered.length === 0) filtered.push(this.fetchItunesList(query));
+
+    const settled = await Promise.allSettled(filtered);
     const flattened = settled
       .filter(r => r.status === 'fulfilled' && Array.isArray(r.value))
       .flatMap(r => r.value);
