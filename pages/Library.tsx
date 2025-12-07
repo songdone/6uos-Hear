@@ -7,6 +7,7 @@ import { Book } from '../types';
 import { Icon } from '../components/Icons';
 import { ImageUploader } from '../components/ui/ImageUploader';
 import { MetadataSearchModal } from '../components/MetadataSearchModal';
+import { RenamePreviewModal } from '../components/RenamePreviewModal';
 
 // --- Long Press Hook for Mobile Context Menu ---
 const useLongPress = (callback: () => void, ms = 500) => {
@@ -155,6 +156,7 @@ export const Library: React.FC = () => {
   const [editMode, setEditMode] = useState(false);
   const [editingBook, setEditingBook] = useState<Book | null>(null);
   const [showScraper, setShowScraper] = useState(false);
+  const [showRename, setShowRename] = useState(false);
 
   const filteredBooks = useMemo(() => {
       let result = books.filter(b => 
@@ -342,13 +344,22 @@ export const Library: React.FC = () => {
                       <button onClick={() => setEditingBook(null)} className="p-2 bg-slate-100 dark:bg-white/10 rounded-full text-slate-500 hover:text-slate-700 transition"><Icon.X /></button>
                   </div>
                   <form onSubmit={handleSaveEdit} className="space-y-4">
-                      <button 
-                        type="button" 
+                      <button
+                        type="button"
                         onClick={() => setShowScraper(true)}
                         className="w-full py-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-bold text-sm shadow-md hover:scale-[1.01] transition-transform flex items-center justify-center gap-2"
                       >
                           <Icon.Search className="w-4 h-4" />
                           自动刮削元数据
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowRename(true)}
+                        className="w-full py-2 bg-slate-900 text-white rounded-xl font-bold text-sm shadow-md hover:scale-[1.01] transition-transform flex items-center justify-center gap-2"
+                      >
+                          <Icon.Sparkles className="w-4 h-4" />
+                          整理 / 重命名预览
                       </button>
 
                       <div className="flex gap-4 items-start">
@@ -393,11 +404,19 @@ export const Library: React.FC = () => {
       )}
 
       {editingBook && showScraper && (
-          <MetadataSearchModal 
-              book={editingBook} 
-              isOpen={showScraper} 
-              onClose={() => setShowScraper(false)} 
-              onApply={handleApplyScrape} 
+          <MetadataSearchModal
+              book={editingBook}
+              isOpen={showScraper}
+              onClose={() => setShowScraper(false)}
+              onApply={handleApplyScrape}
+          />
+      )}
+
+      {editingBook && showRename && (
+          <RenamePreviewModal
+              book={editingBook}
+              isOpen={showRename}
+              onClose={() => setShowRename(false)}
           />
       )}
     </div>

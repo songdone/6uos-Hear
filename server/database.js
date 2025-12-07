@@ -15,12 +15,20 @@ const Book = sequelize.define('Book', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   title: { type: DataTypes.STRING, allowNull: false },
   author: { type: DataTypes.STRING, defaultValue: 'Unknown' },
+  narrator: { type: DataTypes.STRING },
+  series: { type: DataTypes.STRING },
+  seriesIndex: { type: DataTypes.FLOAT },
+  tags: { type: DataTypes.JSON },
   description: { type: DataTypes.TEXT },
   coverUrl: { type: DataTypes.STRING },
   publishYear: { type: DataTypes.STRING },
   language: { type: DataTypes.STRING },
   duration: { type: DataTypes.FLOAT, defaultValue: 0 }, // Total seconds
-  folderPath: { type: DataTypes.STRING, unique: true }
+  folderPath: { type: DataTypes.STRING, unique: true },
+  metadataSource: { type: DataTypes.STRING },
+  scrapeConfidence: { type: DataTypes.FLOAT, defaultValue: 0 },
+  reviewNeeded: { type: DataTypes.BOOLEAN, defaultValue: false },
+  ingestNotes: { type: DataTypes.TEXT }
 });
 
 const AudioFile = sequelize.define('AudioFile', {
