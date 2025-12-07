@@ -6,7 +6,7 @@ import { Icon } from './Icons';
 import { PlayPauseButton } from './PlayerControls';
 
 export const MiniPlayer: React.FC = () => {
-  const { currentBookId, getBook, openFullScreen } = usePlayer();
+  const { currentBookId, getBook, openFullScreen, isPlaying } = usePlayer();
   const book = getBook(currentBookId);
 
   if (!book) return null;
@@ -18,11 +18,11 @@ export const MiniPlayer: React.FC = () => {
         onClick={openFullScreen}
       >
         <div className="flex items-center gap-3 overflow-hidden">
-          <img 
-            src={book.coverUrl} 
-            alt={book.title} 
-            className="w-10 h-10 rounded-md object-cover animate-[spin_10s_linear_infinite]" 
-            style={{ animationPlayState: 'paused' }} 
+          <img
+            src={book.coverUrl}
+            alt={book.title}
+            className="w-10 h-10 rounded-md object-cover animate-[spin_10s_linear_infinite]"
+            style={{ animationPlayState: isPlaying ? 'running' : 'paused' }}
           />
           <div className="flex flex-col overflow-hidden">
             <span className="text-sm font-bold truncate text-slate-800 dark:text-white">{book.title}</span>
