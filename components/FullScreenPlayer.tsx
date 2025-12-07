@@ -36,13 +36,25 @@ export const FullScreenPlayer: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'chapters' | 'characters' | 'ambience' | null>(null);
   const [showSleepMenu, setShowSleepMenu] = useState(false);
   const [showShare, setShowShare] = useState(false); 
-  const [drivingMode, setDrivingMode] = useState(false); 
+  const [drivingMode, setDrivingMode] = useState(false);
   const [remainingSleepTime, setRemainingSleepTime] = useState<number | null>(null);
-  
+
   const lastTapRef = useRef<number>(0);
   const [gestureFeedback, setGestureFeedback] = useState<'forward' | 'rewind' | null>(null);
 
   const seekSeconds = user?.preferences.seekInterval || 15;
+  const progressPercent = book?.duration ? Math.min(100, (currentTime / book.duration) * 100) : 0;
+  const remainingSeconds = book?.duration ? Math.max(0, Math.floor(book.duration - currentTime)) : 0;
+  const activeChapter = book?.chapters?.find((c) => currentTime >= c.startTime && currentTime < c.startTime + c.duration);
+  const chapterIndex = book?.chapters?.findIndex((c) => c === activeChapter) ?? -1;
+  const currentChapterLabel = activeChapter ? `${chapterIndex + 1}/${book?.chapters?.length ?? 0}` : '—';
+
+  const formatClock = (secs: number) => {
+      const h = Math.floor(secs / 3600);
+      const m = Math.floor((secs % 3600) / 60);
+      const s = secs % 60;
+      return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}` : `${m}:${s.toString().padStart(2, '0')}`;
+  };
 
   // Reset tab when book changes to prevent stale UI
   useEffect(() => {
@@ -252,6 +264,31 @@ export const FullScreenPlayer: React.FC = () => {
             </div>
         )}
       </div>
+
+      {!zenMode && (
+          <div className="relative z-20 w-full max-w-4xl px-8 pb-2">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[11px] uppercase tracking-wide">
+                <div className="p-3 rounded-2xl bg-white/20 dark:bg-black/30 backdrop-blur-md text-white/80 border border-white/10 shadow-inner">
+                    <div className="flex items-center justify-between font-bold"><span>进度</span><span>{progressPercent.toFixed(0)}%</span></div>
+                    <div className="mt-1 h-1.5 rounded-full bg-white/20 overflow-hidden">
+                        <div className="h-full bg-cyan-400" style={{ width: `${progressPercent}%` }} />
+                    </div>
+                </div>
+                <div className="p-3 rounded-2xl bg-white/20 dark:bg-black/30 backdrop-blur-md text-white/80 border border-white/10 shadow-inner">
+                    <div className="font-bold flex items-center justify-between"><span>剩余</span><span>{formatClock(remainingSeconds)}</span></div>
+                    <p className="text-[10px] opacity-70 mt-1">智能回退已启用</p>
+                </div>
+                <div className="p-3 rounded-2xl bg-white/20 dark:bg-black/30 backdrop-blur-md text-white/80 border border-white/10 shadow-inner hidden md:block">
+                    <div className="font-bold flex items-center justify-between"><span>章节</span><span>{currentChapterLabel}</span></div>
+                    <p className="text-[10px] opacity-70 mt-1 line-clamp-1">{activeChapter?.title || '自动章节定位'}</p>
+                </div>
+                <div className="p-3 rounded-2xl bg-white/20 dark:bg-black/30 backdrop-blur-md text-white/80 border border-white/10 shadow-inner">
+                    <div className="font-bold flex items-center justify-between"><span>设备适配</span><span className="text-[10px] px-2 py-0.5 bg-white/10 rounded-full">多端</span></div>
+                    <p className="text-[10px] opacity-70 mt-1">安全区留白 & 手势友好</p>
+                </div>
+            </div>
+          </div>
+      )}
 
       {/* Zen Mode Hint */}
       {zenMode && (

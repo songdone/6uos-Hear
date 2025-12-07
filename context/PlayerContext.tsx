@@ -92,6 +92,7 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     sleepEndOfChapter: false,
     zenMode: false,
     lastSeekPosition: null,
+    lastPausedAt: null,
     ambience: 'none',
     ambienceVolume: 0.2, // Default lower for background
     abLoop: { start: null, end: null, active: false },
@@ -112,6 +113,8 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ambienceAudioRef = useRef<HTMLAudioElement | null>(null); // Dedicated Ambience Player
+  const lastProgressTickRef = useRef<number>(Date.now());
+  const sleepTriggeredRef = useRef(false);
   
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionStartRef = useRef<number>(Date.now());
@@ -149,7 +152,12 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           description: b.description,
           tracks: tracks,
           chapters: chapters,
-          isLiked: false
+          isLiked: false,
+          folderPath: b.folderPath,
+          scrapeConfidence: b.scrapeConfidence,
+          metadataSource: b.metadataSource,
+          reviewNeeded: b.reviewNeeded,
+          tags: b.tags
       };
   };
 
@@ -270,10 +278,19 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, []);
 
   const getBook = useCallback((id: string | null) => {
-      return booksRef.current.find(b => b.id === id); 
-  }, []); 
+      return booksRef.current.find(b => b.id === id);
+  }, []);
 
   // --- Actions (Stable References via useCallback) ---
+
+  const computeSmartRewind = (pausedAt: number | null) => {
+      if (!pausedAt) return 0;
+      const diffMs = Date.now() - pausedAt;
+      if (diffMs > 24 * 60 * 60 * 1000) return 60;
+      if (diffMs > 60 * 60 * 1000) return 30;
+      if (diffMs > 5 * 60 * 1000) return 10;
+      return 0;
+  };
 
   const showToast = useCallback((msg: string, type: 'success' | 'error' | 'info' = 'info') => {
       const id = Date.now().toString();
@@ -282,6 +299,39 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, []);
 
   const removeToast = useCallback((id: string) => setToasts(prev => prev.filter(t => t.id !== id)), []);
+
+  // --- Sleep Timer / End-of-chapter watchdog ---
+  useEffect(() => {
+      if (!state.sleepTimer && !state.sleepEndOfChapter) {
+          sleepTriggeredRef.current = false;
+          return;
+      }
+
+      const interval = setInterval(() => {
+          const book = getBook(state.currentBookId);
+          const now = Date.now();
+
+          if (state.sleepTimer && now >= state.sleepTimer && !sleepTriggeredRef.current) {
+              audioRef.current?.pause();
+              setState(prev => ({ ...prev, isPlaying: false, sleepTimer: null, sleepEndOfChapter: false }));
+              sleepTriggeredRef.current = true;
+              showToast('已按定时休眠暂停播放', 'info');
+              return;
+          }
+
+          if (state.sleepEndOfChapter && book?.chapters?.length && state.currentBookId) {
+              const active = book.chapters.find(c => state.currentTime >= c.startTime && state.currentTime < c.startTime + c.duration);
+              if (!active && !sleepTriggeredRef.current) {
+                  audioRef.current?.pause();
+                  setState(prev => ({ ...prev, isPlaying: false, sleepTimer: null, sleepEndOfChapter: false }));
+                  sleepTriggeredRef.current = true;
+                  showToast('本章播放完毕，已为你暂停', 'info');
+              }
+          }
+      }, 700);
+
+      return () => clearInterval(interval);
+  }, [getBook, showToast, state.currentBookId, state.currentTime, state.sleepEndOfChapter, state.sleepTimer]);
 
   const playBook = useCallback((bookId: string) => {
       const book = booksRef.current.find(b => b.id === bookId);
@@ -322,6 +372,7 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                   currentTime: resumeTime,
                   duration: book.duration,
                   isPlaying: true,
+                  lastPausedAt: null,
                   abLoop: { start: null, end: null, active: false }
               };
           } else if (book.audioUrl) {
@@ -339,6 +390,7 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                   currentTime: resumeTime,
                   duration: book.duration,
                   isPlaying: true,
+                  lastPausedAt: null,
                   abLoop: { start: null, end: null, active: false }
               };
           } else {
@@ -392,27 +444,32 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const togglePlay = useCallback(() => setState(prev => {
       if (prev.currentBookId) {
-          if (prev.isPlaying) audioRef.current?.pause();
-          else audioRef.current?.play();
-          return { ...prev, isPlaying: !prev.isPlaying };
+          if (prev.isPlaying) {
+              audioRef.current?.pause();
+              return { ...prev, isPlaying: false, lastPausedAt: Date.now() };
+          }
+
+          const rewind = computeSmartRewind(prev.lastPausedAt ?? null);
+          if (rewind > 0) {
+              setTimeout(() => seek(Math.max(0, prev.currentTime - rewind), true), 0);
+          }
+
+          audioRef.current?.play();
+          return { ...prev, isPlaying: true, lastPausedAt: null };
       }
       return prev;
-  }), []);
+  }), [computeSmartRewind, seek]);
 
   const setVolume = useCallback((v: number) => setState(prev => ({...prev, volume: v})), []);
   const setSpeed = useCallback((s: number) => setState(prev => ({...prev, speed: s})), []);
   const undoSeek = useCallback(() => setState(prev => {
       if (prev.lastSeekPosition !== null) {
-          // This actually needs to call the 'seek' logic logic, which is hard inside setState.
-          // Simplification: trigger an effect or just mutate ref? 
-          // For now, we will perform the seek side effect:
           const t = prev.lastSeekPosition;
-          if (audioRef.current) audioRef.current.currentTime = t; // Approximate for single track
-          // Ideally we call the full seek logic, but to keep this stable we do:
-          return { ...prev, currentTime: t, lastSeekPosition: null };
+          setTimeout(() => seek(t, true), 0);
+          return { ...prev, lastSeekPosition: null };
       }
       return prev;
-  }), []);
+  }), [seek]);
   
   const updateBook = useCallback((b: Book) => {
       setBooks(prev => {
@@ -479,6 +536,7 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   
   const setSleepTimer = useCallback((m: number|null, e: boolean = false) => {
      const t = m ? Date.now() + m * 60000 : null;
+     sleepTriggeredRef.current = false;
      setState(prev => ({...prev, sleepTimer: t, sleepEndOfChapter: e}));
   }, []);
   
@@ -582,8 +640,11 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             return { ...prev, currentTime: globalTime };
         });
-        
-        setDailyProgress(prev => prev + 0.1);
+
+        const now = Date.now();
+        const deltaSec = Math.max(0, (now - lastProgressTickRef.current) / 1000);
+        lastProgressTickRef.current = now;
+        setDailyProgress(prev => prev + deltaSec);
     };
 
     const handleEnded = () => {

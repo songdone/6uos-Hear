@@ -53,7 +53,7 @@ export const MetadataSearchModal: React.FC<Props> = ({ book, isOpen, onClose, on
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
                         <Icon.Search className="w-6 h-6 text-cyan-500" />
-                        元数据刮削 (iTunes / Google Books)
+                        元数据刮削 (多源联动)
                     </h3>
                     <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-white/10 rounded-full"><Icon.X /></button>
                 </div>
@@ -94,13 +94,21 @@ export const MetadataSearchModal: React.FC<Props> = ({ book, isOpen, onClose, on
                             <div className="flex-1 min-w-0">
                                 <div className="flex justify-between items-start">
                                     <h4 className="text-lg font-bold text-slate-800 dark:text-white truncate">{item.title}</h4>
-                                    <span className={`text-[10px] px-2 py-0.5 rounded ${item.source === 'iTunes' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'}`}>
-                                        {item.source}
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        {item.confidence !== undefined && (
+                                            <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">
+                                                可信度 {(item.confidence * 100).toFixed(0)}%
+                                            </span>
+                                        )}
+                                        <span className={`text-[10px] px-2 py-0.5 rounded ${item.source === 'iTunes' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'}`}>
+                                            {item.source}
+                                        </span>
+                                    </div>
                                 </div>
                                 <p className="text-sm font-medium text-slate-600 dark:text-slate-300">{item.author}</p>
                                 {item.publisher && <p className="text-xs text-slate-400 mt-1">{item.publisher} · {item.publishedDate?.substring(0,4)}</p>}
                                 <p className="text-xs text-slate-500 mt-2 line-clamp-2">{item.description}</p>
+                                {item.tags && <p className="text-[11px] text-cyan-600 dark:text-cyan-300 mt-1 truncate">{item.tags}</p>}
                             </div>
                         </GlassCard>
                     ))}

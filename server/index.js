@@ -9,6 +9,8 @@ const fs = require('fs');
 
 const { initDb, Book, AudioFile } = require('./database');
 const LibraryScanner = require('./services/scanner');
+const scraper = require('./services/scraper');
+const { buildRenamePlan, applyRenamePlan } = require('./services/renamer');
 const streamRoutes = require('./routes/stream');
 
 const app = express();
@@ -87,11 +89,51 @@ app.get('/api/books', async (req, res) => {
 app.post('/api/library/scan', async (req, res) => {
     const config = req.body || {};
     console.log('[API] Manual Scan Triggered with Config');
-    
+
     scanner.scanLibrary(config).then(() => {
         io.emit('scan_complete', { time: Date.now() });
     });
     res.json({ status: 'scanning_started', message: 'Background scan started with provided configuration' });
+});
+
+app.post('/api/metadata/search', async (req, res) => {
+    const { query, config } = req.body || {};
+    if (!query) return res.status(400).json({ error: 'query is required' });
+    try {
+        const results = await scraper.searchAll(query, config || {});
+        res.json(results);
+    } catch (e) {
+        res.status(500).json({ error: 'Metadata search failed', detail: e.message });
+    }
+});
+
+app.post('/api/metadata/rename-preview', async (req, res) => {
+    const { bookId, template = '{Author} - {Title}/{TrackNumber} {SafeName}', apply = false, cleanNames = true } = req.body || {};
+    if (!bookId) return res.status(400).json({ error: 'bookId is required' });
+
+    try {
+        const book = await Book.findByPk(bookId, { include: [AudioFile] });
+        if (!book) return res.status(404).json({ error: 'Book not found' });
+
+        const plan = buildRenamePlan(book, book.AudioFiles || [], template, { cleanNames });
+        const summary = {
+            total: plan.length,
+            conflicts: plan.filter(p => p.conflict).length,
+        };
+
+        let applied = [];
+        if (apply) {
+            applied = applyRenamePlan(LIBRARY_PATH, plan);
+            if (applied.length > 0) {
+                await book.reload({ include: [AudioFile] });
+            }
+        }
+
+        res.json({ plan, summary, applied });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: 'Rename preview failed', detail: e.message });
+    }
 });
 
 app.post('/api/upload', upload.array('files'), async (req, res) => {
