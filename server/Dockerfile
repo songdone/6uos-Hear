@@ -1,22 +1,31 @@
 # server/Dockerfile
-FROM node:18-alpine
+# Build backend with deterministic, optional-free installs suitable for NAS docker-compose
+FROM node:20-bookworm-slim
 
-# 安装 ffmpeg (计算音频时长必须)
-RUN apk add --no-cache ffmpeg
+# Disable npm optional deps (avoid rollup/esbuild optional binaries) and reduce noise
+ENV NODE_ENV=production \
+    NPM_CONFIG_FUND=false \
+    NPM_CONFIG_AUDIT=false \
+    NPM_CONFIG_OPTIONAL=false
+
+# Install runtime + build prerequisites for sqlite3 native bindings and ffmpeg duration scans
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      ffmpeg \
+      build-essential \
+      python3 && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# 复制后端依赖配置
-COPY package.json ./
+# Copy dependency manifests first for better docker layer caching
+COPY package*.json ./
 
-# 安装后端依赖
-RUN npm install --production
+# Install production deps only, skipping optional binaries that break on some hosts
+RUN npm ci --omit=dev --no-optional && npm cache clean --force
 
-# 复制后端所有源代码
+# Copy backend source
 COPY . .
 
-# 暴露后端端口
 EXPOSE 3000
-
-# 启动命令
 CMD ["node", "index.js"]
