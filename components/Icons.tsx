@@ -103,5 +103,8 @@ export const Icon = {
   ),
   FolderOpen: ({ className }: { className?: string }) => (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m6 14 1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.93a2 2 0 0 1 1.66.9l.82 1.2a2 2 0 0 0 1.66.9H18a2 2 0 0 1 2 2v2"></path></svg>
+  ),
+  Sparkles: ({ className }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 3v3"></path><path d="M12 12v9"></path><path d="M17.4 6.6 15 9"></path><path d="M9 15l-2.4 2.4"></path><path d="M21 12h-3"></path><path d="M6 12H3"></path><path d="m17.4 17.4-2.8-2.8"></path><path d="M9.4 9.4 6.6 6.6"></path></svg>
   )
 };

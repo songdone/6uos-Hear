@@ -76,14 +76,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             useItunes: true,
             useGoogleBooks: true,
             useOpenLibrary: true,
+            useXimalaya: true,
+            useDouban: true,
+            useAbsXimalayaProvider: true,
+            useDoubanProvider: true,
+            absXimalayaProviderUrl: '',
+            doubanProviderUrl: '',
+            preferredSources: ['Douban', 'Ximalaya', 'iTunes', 'GoogleBooks'],
             customSourceUrl: '',
-            
+
             priorityNfo: true,
             extractEmbeddedCover: true,
             folderAsSeries: false,
             flattenMultiDisc: true,
             ignorePatterns: 'extras, sample, artwork',
-            
+
             enableRenaming: false,
             renameTemplate: '{Author}/{Year} - {Title}',
             cleanFilename: true,
