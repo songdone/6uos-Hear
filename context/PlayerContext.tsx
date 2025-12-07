@@ -109,12 +109,17 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   
   const [dailyProgress, setDailyProgress] = useState(0); 
-  const dailyGoal = user?.preferences.dailyGoalMinutes || 30; 
+  const dailyGoal = user?.preferences.dailyGoalMinutes || 30;
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ambienceAudioRef = useRef<HTMLAudioElement | null>(null); // Dedicated Ambience Player
   const lastProgressTickRef = useRef<number>(Date.now());
   const sleepTriggeredRef = useRef(false);
+
+  const stateRef = useRef<PlayerState>(state);
+  useEffect(() => {
+      stateRef.current = state;
+  }, [state]);
 
   const backendProgressThrottleRef = useRef<number>(0);
   
@@ -285,6 +290,44 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const getBook = useCallback((id: string | null) => {
       return booksRef.current.find(b => b.id === id);
   }, []);
+
+  const persistProgressNow = useCallback(() => {
+      const snapshot = stateRef.current;
+      if (!snapshot.currentBookId) return;
+      const book = getBook(snapshot.currentBookId);
+      if (!book) return;
+
+      const payload = JSON.stringify({
+          currentTime: snapshot.currentTime,
+          duration: book.duration,
+          isFinished: snapshot.currentTime >= book.duration - 1
+      });
+
+      if (navigator.sendBeacon) {
+          navigator.sendBeacon(`/api/progress/${snapshot.currentBookId}`, new Blob([payload], { type: 'application/json' }));
+      } else {
+          fetch(`/api/progress/${snapshot.currentBookId}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: payload
+          }).catch(() => {});
+      }
+  }, [getBook]);
+
+  useEffect(() => {
+      const handleVisibility = () => {
+          if (document.visibilityState === 'hidden') {
+              persistProgressNow();
+          }
+      };
+      const handleUnload = () => persistProgressNow();
+      document.addEventListener('visibilitychange', handleVisibility);
+      window.addEventListener('beforeunload', handleUnload);
+      return () => {
+          document.removeEventListener('visibilitychange', handleVisibility);
+          window.removeEventListener('beforeunload', handleUnload);
+      };
+  }, [persistProgressNow]);
 
   // --- Actions (Stable References via useCallback) ---
 

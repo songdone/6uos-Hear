@@ -1,14 +1,18 @@
 
 const axios = require('axios');
+const cheerio = require('cheerio');
 
 class HybridScraper {
   constructor() {
     this.sources = {
       itunes: 'https://itunes.apple.com/search',
       google: 'https://www.googleapis.com/books/v1/volumes',
-      ximalaya: 'https://www.ximalaya.com/revision/search/main',
+      ximalaya: 'https://www.ximalaya.com/revision/search',
       openLibrary: 'https://openlibrary.org/search.json',
-      douban: 'https://frodo.douban.com/api/v2/search'
+      douban: 'https://frodo.douban.com/api/v2/search',
+      // 外部 ABS Provider（可通过 docker 镜像 shanyanwcx/abs-ximalaya 与 zqing90/audiobookshelf-provider-douban 部署）
+      absXimalaya: process.env.ABS_XIMALAYA_PROVIDER_URL || process.env.XIMALAYA_PROVIDER_URL || '',
+      absDouban: process.env.ABS_DOUBAN_PROVIDER_URL || process.env.DOUBAN_PROVIDER_URL || ''
     };
 
     this.headers = {
@@ -41,6 +45,83 @@ class HybridScraper {
         console.error("Custom source failed:", e.message);
         return null;
     }
+  }
+
+  normalizeProviderUrl(url) {
+    if (!url) return '';
+    return url.replace(/\/$/, '');
+  }
+
+  unwrapProviderItems(payload) {
+    if (!payload) return [];
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload.results)) return payload.results;
+    if (Array.isArray(payload.items)) return payload.items;
+    if (Array.isArray(payload.data)) return payload.data;
+    if (payload.item) return [payload.item];
+    return [];
+  }
+
+  mapProviderResult(item, source) {
+    if (!item) return null;
+    return {
+      source,
+      title: item.title || item.name || item.albumTitle || item.collectionName,
+      author: item.author || item.artist || item.announcer || item.nickname,
+      description: item.description || item.intro || item.summary || item.abstract,
+      coverUrl: item.cover || item.coverUrl || item.cover_path || item.pic || item.artwork,
+      publishYear: item.year || item.publishYear || item.releaseDate,
+      tags: Array.isArray(item.tags) ? item.tags.join(', ') : item.tags || item.category || item.genre
+    };
+  }
+
+  async fetchAbsProvider(baseUrl, query, source) {
+    const root = this.normalizeProviderUrl(baseUrl);
+    if (!root) return null;
+
+    const attempts = [
+      `${root}/search?query=${encodeURIComponent(query)}`,
+      `${root}/search?term=${encodeURIComponent(query)}`,
+      `${root}/?query=${encodeURIComponent(query)}`
+    ];
+
+    for (const url of attempts) {
+      try {
+        const res = await axios.get(url, { timeout: 5000 });
+        const items = this.unwrapProviderItems(res.data);
+        if (!items.length) continue;
+        return this.mapProviderResult(items[0], source);
+      } catch (e) {
+        console.warn(`[Scraper] ${source} provider attempt failed at ${url}: ${e.message}`);
+      }
+    }
+    return null;
+  }
+
+  async fetchAbsProviderList(baseUrl, query, source, limit = 5) {
+    const root = this.normalizeProviderUrl(baseUrl);
+    if (!root) return [];
+
+    const attempts = [
+      `${root}/search?query=${encodeURIComponent(query)}&limit=${limit}`,
+      `${root}/search?term=${encodeURIComponent(query)}&limit=${limit}`,
+      `${root}/?query=${encodeURIComponent(query)}&limit=${limit}`
+    ];
+
+    for (const url of attempts) {
+      try {
+        const res = await axios.get(url, { timeout: 5000 });
+        const items = this.unwrapProviderItems(res.data);
+        if (!items.length) continue;
+        return items
+          .slice(0, limit)
+          .map((item) => this.mapProviderResult(item, source))
+          .filter(Boolean);
+      } catch (e) {
+        console.warn(`[Scraper] ${source} provider list attempt failed at ${url}: ${e.message}`);
+      }
+    }
+    return [];
   }
 
   async fetchItunes(query) {
@@ -82,25 +163,163 @@ class HybridScraper {
     } catch (e) { return []; }
   }
 
-  async fetchXimalaya(query) {
+  sanitizeXimalayaCover(path) {
+    if (!path) return null;
+    // API 返回常见的 //imagev2.xmcdn.com 或带 !op_type=3&columns=290&rows=290&magick=png 后缀
+    const normalized = path.startsWith('http') ? path : `https:${path}`;
+    return normalized.replace(/!op_type=.*$/, '');
+  }
+
+  async fetchXimalayaRichIntro(albumId) {
+    if (!albumId) return null;
+    try {
+      const res = await axios.get('https://mobile.ximalaya.com/mobile-album/album/plant/detail', {
+        headers: {
+          ...this.headers,
+          Referer: 'https://www.ximalaya.com/',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        params: { albumId, device: 'android', identity: 'podcast' },
+        timeout: 5000
+      });
+      return res.data?.data?.richIntro || res.data?.richIntro || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async fetchXimalayaSearch(query, limit = 5) {
     try {
       const res = await axios.get(this.sources.ximalaya, {
         headers: this.headers,
-        params: { core: 'album', kw: query, page: 1, rows: 1, spellchecker: true },
-        timeout: 3000
+        params: { core: 'album', kw: query, page: 1, rows: limit, spellchecker: true },
+        timeout: 4000
       });
-      const data = res.data?.data?.album?.docs?.[0];
-      if (!data) return null;
+
+      const docs = res.data?.data?.album?.docs || [];
+      return docs.map((doc) => ({
+        albumId: doc.albumId || doc.id,
+        title: doc.title,
+        author: doc.nickname,
+        description: doc.intro,
+        coverUrl: this.sanitizeXimalayaCover(doc.coverPath || doc.cover_url),
+        tags: doc.categoryTitle,
+        rating: doc.playCount
+      }));
+    } catch (e) {
+      return [];
+    }
+  }
+
+  async fetchXimalaya(query) {
+    const list = await this.fetchXimalayaSearch(query, 1);
+    if (!list.length) return null;
+    const item = list[0];
+    const intro = await this.fetchXimalayaRichIntro(item.albumId);
+    return { ...item, source: 'Ximalaya', description: intro || item.description };
+  }
+
+  async fetchXimalayaList(query, limit = 5) {
+    const list = await this.fetchXimalayaSearch(query, limit);
+    if (!list.length) return [];
+
+    const enriched = await Promise.all(
+      list.map(async (item) => {
+        const intro = await this.fetchXimalayaRichIntro(item.albumId);
+        return { ...item, source: 'Ximalaya', description: intro || item.description };
+      })
+    );
+
+    return enriched;
+  }
+
+  getInfoField($, label) {
+    const span = $(`#info span.pl:contains("${label}")`).first();
+    if (!span.length) return '';
+    const texts = [];
+    let node = span[0].nextSibling;
+    while (node) {
+      if (node.type === 'tag' && node.name === 'br') break;
+      if (node.type === 'text') texts.push(node.data.trim());
+      if (node.type === 'tag' && node.name === 'a') texts.push($(node).text().trim());
+      node = node.nextSibling;
+    }
+    return texts.join('').replace(/\s+/g, ' ').trim();
+  }
+
+  async fetchDoubanSearch(query, limit = 5) {
+    try {
+      const res = await axios.get('https://www.douban.com/search', {
+        headers: {
+          ...this.headers,
+          Referer: 'https://www.douban.com/'
+        },
+        params: { cat: 1001, q: query },
+        timeout: 6000
+      });
+
+      const $ = cheerio.load(res.data);
+      const links = [];
+      $('a.nbg').each((_, el) => {
+        const href = $(el).attr('href');
+        if (!href) return;
+        const decoded = decodeURIComponent(href);
+        const match = decoded.match(/https?:\/\/book\.douban\.com\/subject\/(\d+)/);
+        if (match) links.push(`https://book.douban.com/subject/${match[1]}/`);
+      });
+      return Array.from(new Set(links)).slice(0, limit);
+    } catch (e) {
+      return [];
+    }
+  }
+
+  async fetchDoubanDetail(url) {
+    try {
+      const res = await axios.get(url, {
+        headers: { ...this.headers, Referer: 'https://www.douban.com/' },
+        timeout: 6000
+      });
+      const $ = cheerio.load(res.data);
+
+      const title = $('span[property="v:itemreviewed"]').text().trim();
+      const author = this.getInfoField($, '作者');
+      const publisher = this.getInfoField($, '出版社');
+      const publishYear = this.getInfoField($, '出版年');
+      const isbn = this.getInfoField($, 'ISBN');
+      const description = $('#link-report .intro').first().text().trim() || $('meta[name="description"]').attr('content') || '';
+      const coverUrl = $('#mainpic img').attr('src');
+      const tags = $('#db-tags-section a.tag').map((_, el) => $(el).text().trim()).get().join(', ');
+
+      if (!title) return null;
       return {
-        source: 'Ximalaya',
-        title: data.title,
-        author: data.nickname, 
-        description: data.intro, 
-        coverUrl: data.coverPath,
-        rating: data.playCount,
-        tags: data.categoryTitle
+        source: 'Douban',
+        title,
+        author,
+        publisher,
+        publishYear,
+        isbn,
+        description,
+        coverUrl,
+        tags
       };
-    } catch (e) { return null; }
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async fetchDoubanList(query, limit = 5) {
+    const links = await this.fetchDoubanSearch(query, limit);
+    const results = [];
+    for (const link of links) {
+      const detail = await this.fetchDoubanDetail(link);
+      if (detail) results.push(detail);
+    }
+    return results;
+  }
+
+  async fetchDouban(query) {
+    const list = await this.fetchDoubanList(query, 1);
+    return list[0] || null;
   }
 
   async fetchGoogleBooks(query) {
@@ -184,29 +403,6 @@ class HybridScraper {
     } catch (e) { return []; }
   }
 
-  async fetchDoubanList(query, limit = 5) {
-    try {
-      const res = await axios.get(this.sources.douban, {
-        params: { q: query, count: limit },
-        timeout: 5000
-      });
-      const items = res.data?.items || [];
-      return items.map((item) => ({
-        source: 'Douban',
-        title: item.target?.title || item.title,
-        author: item.target?.author || item.target?.card_subtitle || item.subtitle,
-        description: item.target?.abstract || item.target?.intro,
-        coverUrl: item.target?.cover_url || item.pic,
-        tags: item.target?.tags?.map((t) => t.name).join(', ')
-      }));
-    } catch (e) { return []; }
-  }
-
-  async fetchDouban(query) {
-    const list = await this.fetchDoubanList(query, 1);
-    return list[0] || null;
-  }
-
   scoreResult(result, query) {
     const normalizedQuery = query.toLowerCase();
     let score = 0.35;
@@ -271,6 +467,16 @@ class HybridScraper {
     pushSource('GoogleBooks', config.useGoogleBooks !== false ? this.fetchGoogleBooks(query) : null);
     pushSource('OpenLibrary', config.useOpenLibrary ? this.fetchOpenLibrary(query) : null);
     pushSource('Douban', config.useDouban !== false ? this.fetchDouban(query) : null);
+    pushSource('AbsXimalayaProvider',
+      config.useAbsXimalayaProvider === false
+        ? null
+        : this.fetchAbsProvider(config.absXimalayaProviderUrl || this.sources.absXimalaya, query, 'AbsXimalayaProvider')
+    );
+    pushSource('AbsDoubanProvider',
+      config.useDoubanProvider === false
+        ? null
+        : this.fetchAbsProvider(config.doubanProviderUrl || this.sources.absDouban, query, 'AbsDoubanProvider')
+    );
     pushSource('Custom', config.customSourceUrl ? this.fetchCustomSource(query, config.customSourceUrl) : null);
 
     const filteredSources = enabledSources.filter(Boolean);
@@ -305,8 +511,24 @@ class HybridScraper {
     pushTask('iTunes', this.fetchItunesList(query));
     pushTask('GoogleBooks', config.useGoogleBooks !== false ? this.fetchGoogleBooksList(query) : null);
     pushTask('OpenLibrary', config.useOpenLibrary ? this.fetchOpenLibraryList(query) : null);
-    pushTask('Ximalaya', config.useXimalaya ? this.fetchXimalaya(query).then(r => r ? [r] : []) : null);
+    pushTask('Ximalaya', config.useXimalaya ? this.fetchXimalayaList(query) : null);
     pushTask('Douban', config.useDouban !== false ? this.fetchDoubanList(query) : null);
+    pushTask(
+      'AbsXimalayaProvider',
+      config.useAbsXimalayaProvider === false
+        ? null
+        : this.fetchAbsProviderList(
+            config.absXimalayaProviderUrl || this.sources.absXimalaya,
+            query,
+            'AbsXimalayaProvider'
+          )
+    );
+    pushTask(
+      'AbsDoubanProvider',
+      config.useDoubanProvider === false
+        ? null
+        : this.fetchAbsProviderList(config.doubanProviderUrl || this.sources.absDouban, query, 'AbsDoubanProvider')
+    );
     pushTask('Custom', config.customSourceUrl ? this.fetchCustomSource(query, config.customSourceUrl).then(r => r ? [r] : []) : null);
 
     const filtered = tasks.filter(Boolean);

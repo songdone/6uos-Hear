@@ -1,15 +1,22 @@
 # Dockerfile (位于根目录)
 
 # --- Stage 1: Build Frontend ---
-FROM node:18-alpine as builder
+FROM node:20-bookworm-slim AS builder
+
 WORKDIR /app
-# 复制根目录的依赖配置
+
 COPY package*.json ./
-# 安装依赖（使用锁文件确保与 NAS 构建一致）
-RUN npm ci
-# 复制所有源代码
+
+# 关闭 fund / audit 即可，保持可选依赖启用以避免编译缺失
+RUN npm config set fund false \
+    && npm config set audit false
+
+# 构建阶段安装全部依赖（包含 optional），保持与本地 npm ci 一致
+RUN npm ci \
+    && npm cache clean --force
+
 COPY . .
-# 执行构建 (Vite 会打包到 /dist)
+
 RUN npm run build
 
 # --- Stage 2: Nginx Serve ---
