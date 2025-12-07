@@ -223,6 +223,14 @@ app.post('/api/metadata/rename-preview', async (req, res) => {
         if (apply) {
             applied = applyRenamePlan(LIBRARY_PATH, plan);
             if (applied.length > 0) {
+                for (const item of plan) {
+                    if (item.conflict) continue;
+                    const audio = await AudioFile.findByPk(item.fileId);
+                    if (!audio) continue;
+                    audio.path = item.to;
+                    audio.filename = path.basename(item.to);
+                    await audio.save();
+                }
                 await book.reload({ include: [AudioFile] });
             }
         }
