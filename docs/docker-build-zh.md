@@ -7,8 +7,8 @@
 - Docker 26+、docker compose 2.x
 - Node.js 20.x、npm 10.x（仅用于检查，不参与容器内构建）
 - 确保有声书与数据库目录已存在：
-  - `/tmp/zfsv3/sata14/18520641017/data/PlaySong Media/有声书`（库路径）
-  - `/tmp/zfsv3/nvme12/18520641017/data/Docker/6uos-hear-git/data`（数据库/配置持久化）
+  - `/tmp/zfsv3/sata14/xx/data/PlaySong Media/有声书`（库路径）
+  - `/tmp/zfsv3/nvme12/xx/data/Docker/6uos-hear-git/data`（数据库/配置持久化）
 
 ## 目录与重要文件
 ```
@@ -50,7 +50,7 @@ services:
   backend:
     container_name: 6uos_backend
     build:
-      context: /tmp/zfsv3/nvme12/18520641017/data/Docker/6uos-hear-git/server
+      context: /tmp/zfsv3/nvme12/xx/data/Docker/6uos-hear-git/server
       dockerfile: Dockerfile
     restart: always
     environment:
@@ -59,13 +59,13 @@ services:
       - LIBRARY_PATH=/mnt/library
       - JWT_SECRET=6uos_Hear_Secret_Key_666
     volumes:
-      - "/tmp/zfsv3/sata14/18520641017/data/PlaySong Media/有声书:/mnt/library"
-      - "/tmp/zfsv3/nvme12/18520641017/data/Docker/6uos-hear-git/data:/data"
+      - "/tmp/zfsv3/sata14/xx/data/PlaySong Media/有声书:/mnt/library"
+      - "/tmp/zfsv3/nvme12/xx/data/Docker/6uos-hear-git/data:/data"
 
   frontend:
     container_name: 6uos_frontend
     build:
-      context: /tmp/zfsv3/nvme12/18520641017/data/Docker/6uos-hear-git
+      context: /tmp/zfsv3/nvme12/xx/data/Docker/6uos-hear-git
       dockerfile: Dockerfile
     restart: always
     ports:
@@ -77,8 +77,8 @@ services:
 ## 构建步骤（确保成功的操作顺序）
 1. **清理宿主旧缓存**（避免历史 node_modules 干扰）：
    ```bash
-   rm -rf /tmp/zfsv3/nvme12/18520641017/data/Docker/6uos-hear-git/server/node_modules \
-          /tmp/zfsv3/nvme12/18520641017/data/Docker/6uos-hear-git/node_modules
+   rm -rf /tmp/zfsv3/nvme12/xx/data/Docker/6uos-hear-git/server/node_modules \
+          /tmp/zfsv3/nvme12/xx/data/Docker/6uos-hear-git/node_modules
    ```
 2. **拉取最新代码**：`git pull`
 3. **构建**：在仓库根目录执行
