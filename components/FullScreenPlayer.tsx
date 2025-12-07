@@ -36,13 +36,25 @@ export const FullScreenPlayer: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'chapters' | 'characters' | 'ambience' | null>(null);
   const [showSleepMenu, setShowSleepMenu] = useState(false);
   const [showShare, setShowShare] = useState(false); 
-  const [drivingMode, setDrivingMode] = useState(false); 
+  const [drivingMode, setDrivingMode] = useState(false);
   const [remainingSleepTime, setRemainingSleepTime] = useState<number | null>(null);
-  
+
   const lastTapRef = useRef<number>(0);
   const [gestureFeedback, setGestureFeedback] = useState<'forward' | 'rewind' | null>(null);
 
   const seekSeconds = user?.preferences.seekInterval || 15;
+  const progressPercent = book?.duration ? Math.min(100, (currentTime / book.duration) * 100) : 0;
+  const remainingSeconds = book?.duration ? Math.max(0, Math.floor(book.duration - currentTime)) : 0;
+  const activeChapter = book?.chapters?.find((c) => currentTime >= c.startTime && currentTime < c.startTime + c.duration);
+  const chapterIndex = book?.chapters?.findIndex((c) => c === activeChapter) ?? -1;
+  const currentChapterLabel = activeChapter ? `${chapterIndex + 1}/${book?.chapters?.length ?? 0}` : '—';
+
+  const formatClock = (secs: number) => {
+      const h = Math.floor(secs / 3600);
+      const m = Math.floor((secs % 3600) / 60);
+      const s = secs % 60;
+      return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}` : `${m}:${s.toString().padStart(2, '0')}`;
+  };
 
   // Reset tab when book changes to prevent stale UI
   useEffect(() => {
@@ -217,21 +229,26 @@ export const FullScreenPlayer: React.FC = () => {
 
       {/* 2. Visual Area (Flexible Height) */}
       <div className={`relative z-10 flex-1 flex flex-col items-center justify-center px-8 transition-all duration-500 min-h-0 ${activeTab ? 'scale-90 opacity-40 blur-[2px]' : 'scale-100 opacity-100'}`}>
-        <div 
+        <div
             onClick={zenMode ? toggleZenMode : undefined}
             className={`
-                relative transition-all duration-700 group
-                ${zenMode ? 'w-[80vw] h-[80vw] max-w-[500px] max-h-[500px] cursor-pointer' : 'w-[65vw] h-[65vw] max-w-[350px] max-h-[350px] mb-4 md:mb-8'} 
+                relative transition-all duration-700 group aspect-square
+                ${zenMode ? 'w-[80vw] max-w-[500px] cursor-pointer' : 'w-[65vw] max-w-[350px] mb-4 md:mb-8'}
             `}
         >
            {/* Vinyl Record Effect */}
            <div className={`absolute inset-0 rounded-full bg-black shadow-2xl overflow-hidden border-[4px] md:border-[6px] border-black/80 ${isPlaying ? 'animate-[spin_10s_linear_infinite]' : 'animate-[spin_2s_ease-out_forwards_paused]'}`}>
-                <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover opacity-90" />
-                <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent pointer-events-none rounded-full" />
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 bg-slate-900 rounded-full border-2 border-slate-700 flex items-center justify-center">
-                    <div className="w-2 h-2 bg-black rounded-full" />
-                </div>
+                <div className="absolute inset-[12%] bg-black/60 rounded-full shadow-inner"></div>
+                <div className="absolute inset-[24%] bg-black/30 rounded-full"></div>
            </div>
+
+           {/* Cover Art with slight inset to avoid stretching */}
+           <div className="absolute inset-[18%] rounded-full overflow-hidden shadow-2xl shadow-black/50">
+                <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover scale-[1.02]" />
+           </div>
+
+           {/* Center Pin */}
+           <div className="absolute inset-[45%] rounded-full bg-white shadow-lg"></div>
 
            {!zenMode && (
                <div className="absolute -bottom-12 left-0 right-0 flex justify-between items-center w-full px-4">
@@ -252,6 +269,31 @@ export const FullScreenPlayer: React.FC = () => {
             </div>
         )}
       </div>
+
+      {!zenMode && (
+          <div className="relative z-20 w-full max-w-4xl px-8 pb-2">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[11px] uppercase tracking-wide">
+                <div className="p-3 rounded-2xl bg-white/20 dark:bg-black/30 backdrop-blur-md text-white/80 border border-white/10 shadow-inner">
+                    <div className="flex items-center justify-between font-bold"><span>进度</span><span>{progressPercent.toFixed(0)}%</span></div>
+                    <div className="mt-1 h-1.5 rounded-full bg-white/20 overflow-hidden">
+                        <div className="h-full bg-cyan-400" style={{ width: `${progressPercent}%` }} />
+                    </div>
+                </div>
+                <div className="p-3 rounded-2xl bg-white/20 dark:bg-black/30 backdrop-blur-md text-white/80 border border-white/10 shadow-inner">
+                    <div className="font-bold flex items-center justify-between"><span>剩余</span><span>{formatClock(remainingSeconds)}</span></div>
+                    <p className="text-[10px] opacity-70 mt-1">智能回退已启用</p>
+                </div>
+                <div className="p-3 rounded-2xl bg-white/20 dark:bg-black/30 backdrop-blur-md text-white/80 border border-white/10 shadow-inner hidden md:block">
+                    <div className="font-bold flex items-center justify-between"><span>章节</span><span>{currentChapterLabel}</span></div>
+                    <p className="text-[10px] opacity-70 mt-1 line-clamp-1">{activeChapter?.title || '自动章节定位'}</p>
+                </div>
+                <div className="p-3 rounded-2xl bg-white/20 dark:bg-black/30 backdrop-blur-md text-white/80 border border-white/10 shadow-inner">
+                    <div className="font-bold flex items-center justify-between"><span>设备适配</span><span className="text-[10px] px-2 py-0.5 bg-white/10 rounded-full">多端</span></div>
+                    <p className="text-[10px] opacity-70 mt-1">安全区留白 & 手势友好</p>
+                </div>
+            </div>
+          </div>
+      )}
 
       {/* Zen Mode Hint */}
       {zenMode && (
