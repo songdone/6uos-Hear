@@ -87,7 +87,7 @@ const applyRenamePlan = (libraryRoot, plan) => {
     }
     ensureDir(to);
     fs.renameSync(from, to);
-    applied.push({ from: item.from, to: item.to });
+    applied.push({ fileId: item.fileId, from: item.from, to: item.to });
   }
   return applied;
 };
