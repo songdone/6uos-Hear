@@ -39,6 +39,7 @@ export const FullScreenPlayer: React.FC = () => {
   const [drivingMode, setDrivingMode] = useState(false);
   const [remainingSleepTime, setRemainingSleepTime] = useState<number | null>(null); // seconds
 
+
   const lastTapRef = useRef<number>(0);
   const [gestureFeedback, setGestureFeedback] = useState<'forward' | 'rewind' | null>(null);
 
