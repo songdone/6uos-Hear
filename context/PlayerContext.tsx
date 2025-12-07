@@ -109,12 +109,17 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   
   const [dailyProgress, setDailyProgress] = useState(0); 
-  const dailyGoal = user?.preferences.dailyGoalMinutes || 30; 
+  const dailyGoal = user?.preferences.dailyGoalMinutes || 30;
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ambienceAudioRef = useRef<HTMLAudioElement | null>(null); // Dedicated Ambience Player
   const lastProgressTickRef = useRef<number>(Date.now());
   const sleepTriggeredRef = useRef(false);
+
+  const stateRef = useRef<PlayerState>(state);
+  useEffect(() => {
+      stateRef.current = state;
+  }, [state]);
 
   const backendProgressThrottleRef = useRef<number>(0);
   
@@ -123,7 +128,12 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // --- Helper: Convert Backend Book to Frontend Book ---
   const mapBackendBook = (b: any): Book => {
-      const tracks: Track[] = (b.AudioFiles || []).map((f: any) => ({
+      const sortedFiles = (b.AudioFiles || []).slice().sort((a: any, b: any) => {
+          if (a.trackNumber && b.trackNumber && a.trackNumber !== b.trackNumber) return a.trackNumber - b.trackNumber;
+          return (a.filename || '').localeCompare(b.filename || '', undefined, { numeric: true, sensitivity: 'base' });
+      });
+
+      const tracks: Track[] = sortedFiles.map((f: any) => ({
           id: f.id,
           filename: f.filename,
           duration: f.duration || 0,
@@ -131,11 +141,12 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           format: f.format
       }));
 
-      // Calculate Chapters based on tracks (Auto-generate chapters if tracks > 1)
+      // Calculate Chapters based on ordered tracks (auto-generate chapters if tracks > 1)
       let accumulatedTime = 0;
       const chapters: Chapter[] = tracks.map(t => {
+          const cleanName = t.filename.replace(/\.[^/.]+$/, "").replace(/^\d+[\s.-]+/, "");
           const c = {
-              title: t.filename.replace(/\.[^/.]+$/, "").replace(/^\d+[\s.-]+/, ""),
+              title: cleanName || t.filename,
               startTime: accumulatedTime,
               duration: t.duration
           };
@@ -285,6 +296,44 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const getBook = useCallback((id: string | null) => {
       return booksRef.current.find(b => b.id === id);
   }, []);
+
+  const persistProgressNow = useCallback(() => {
+      const snapshot = stateRef.current;
+      if (!snapshot.currentBookId) return;
+      const book = getBook(snapshot.currentBookId);
+      if (!book) return;
+
+      const payload = JSON.stringify({
+          currentTime: snapshot.currentTime,
+          duration: book.duration,
+          isFinished: snapshot.currentTime >= book.duration - 1
+      });
+
+      if (navigator.sendBeacon) {
+          navigator.sendBeacon(`/api/progress/${snapshot.currentBookId}`, new Blob([payload], { type: 'application/json' }));
+      } else {
+          fetch(`/api/progress/${snapshot.currentBookId}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: payload
+          }).catch(() => {});
+      }
+  }, [getBook]);
+
+  useEffect(() => {
+      const handleVisibility = () => {
+          if (document.visibilityState === 'hidden') {
+              persistProgressNow();
+          }
+      };
+      const handleUnload = () => persistProgressNow();
+      document.addEventListener('visibilitychange', handleVisibility);
+      window.addEventListener('beforeunload', handleUnload);
+      return () => {
+          document.removeEventListener('visibilitychange', handleVisibility);
+          window.removeEventListener('beforeunload', handleUnload);
+      };
+  }, [persistProgressNow]);
 
   // --- Actions (Stable References via useCallback) ---
 

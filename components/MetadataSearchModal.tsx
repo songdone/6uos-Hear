@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { GlassCard } from './ui/GlassCard';
 import { Icon } from './Icons';
-import { scrapeMetadata } from '../utils/scraper';
+import { scrapeMetadata, DEFAULT_SCRAPE_CONFIG } from '../utils/scraper';
 import { Book, ScrapeConfig } from '../types';
 
 interface Props {
@@ -17,13 +17,13 @@ export const MetadataSearchModal: React.FC<Props> = ({ book, isOpen, onClose, on
     const [query, setQuery] = useState(book.title);
     const [results, setResults] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
-    const [sources, setSources] = useState<ScrapeConfig>(() => scrapeConfig || { useDouban: true, useXimalaya: true, useItunes: true, useGoogleBooks: true });
+    const [sources, setSources] = useState<ScrapeConfig>(() => scrapeConfig || DEFAULT_SCRAPE_CONFIG);
 
     // 优化 16: 打开时自动搜索
     useEffect(() => {
         if (isOpen) {
             setQuery(book.title);
-            setSources(scrapeConfig || { useDouban: true, useXimalaya: true, useItunes: true, useGoogleBooks: true });
+            setSources(scrapeConfig || DEFAULT_SCRAPE_CONFIG);
             handleSearch(book.title, scrapeConfig);
         }
     }, [isOpen, book, scrapeConfig]);
@@ -80,9 +80,11 @@ export const MetadataSearchModal: React.FC<Props> = ({ book, isOpen, onClose, on
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4">
-                    {[
+                    {[ 
                         { key: 'useDouban', label: '豆瓣中文优先' },
+                        { key: 'useDoubanProvider', label: '豆瓣 Provider' },
                         { key: 'useXimalaya', label: '喜马拉雅' },
+                        { key: 'useAbsXimalayaProvider', label: '喜马 Provider' },
                         { key: 'useItunes', label: 'iTunes' },
                         { key: 'useGoogleBooks', label: 'Google Books' },
                         { key: 'useOpenLibrary', label: 'Open Library' },
@@ -114,6 +116,43 @@ export const MetadataSearchModal: React.FC<Props> = ({ book, isOpen, onClose, on
                             onClick={() => handleSearch(query, sources)}
                             className="px-3 py-2 text-xs font-bold rounded-lg bg-cyan-500 text-white"
                         >刷新来源</button>
+                    </div>
+                    <div className="col-span-2 md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-2 px-3 py-2 rounded-lg bg-slate-50 dark:bg-white/5">
+                        <div className="flex flex-col gap-1">
+                            <span className="text-xs font-bold text-slate-500">豆瓣 Provider 地址</span>
+                            <input
+                                type="url"
+                                value={sources.doubanProviderUrl || ''}
+                                onChange={(e) => setSources({ ...sources, doubanProviderUrl: e.target.value })}
+                                className="px-3 py-2 rounded-lg bg-white dark:bg-black/40 border border-transparent focus:border-cyan-500 text-sm"
+                                placeholder="http://abs-douban:3000"
+                            />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                            <span className="text-xs font-bold text-slate-500">喜马拉雅 Provider 地址</span>
+                            <input
+                                type="url"
+                                value={sources.absXimalayaProviderUrl || ''}
+                                onChange={(e) => setSources({ ...sources, absXimalayaProviderUrl: e.target.value })}
+                                className="px-3 py-2 rounded-lg bg-white dark:bg-black/40 border border-transparent focus:border-cyan-500 text-sm"
+                                placeholder="http://abs-ximalaya:3000"
+                            />
+                        </div>
+                    </div>
+                    <div className="col-span-2 md:col-span-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 dark:bg-white/5">
+                        <span className="text-xs font-bold text-slate-500">优先顺序</span>
+                        <input
+                            type="text"
+                            value={(sources.preferredSources || []).join(',')}
+                            onChange={(e) => setSources({ ...sources, preferredSources: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+                            className="flex-1 px-3 py-2 rounded-lg bg-white dark:bg-black/40 border border-transparent focus:border-cyan-500 text-sm"
+                            placeholder="Douban,Ximalaya,iTunes"
+                        />
+                        <button
+                            type="button"
+                            onClick={() => handleSearch(query, sources)}
+                            className="px-3 py-2 text-xs font-bold rounded-lg bg-slate-900 text-white"
+                        >重跑</button>
                     </div>
                 </div>
 

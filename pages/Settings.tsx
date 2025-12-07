@@ -384,33 +384,73 @@ export const Settings: React.FC = () => {
                 <section className="space-y-4">
                     <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 ml-1">刮削数据源 (Data Sources)</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Toggle 
-                            label="Apple iTunes API" 
+                        <Toggle
+                            label="豆瓣 (中文优先)"
+                            desc="中文描述、评分、标签优先"
+                            checked={user.preferences.scraper.useDouban !== false}
+                            onChange={(v) => updateScraperSettings({ useDouban: v })}
+                        />
+                        <Toggle
+                            label="豆瓣 Provider (ABS 镜像)"
+                            desc="对接 audiobookshelf-provider-douban"
+                            checked={user.preferences.scraper.useDoubanProvider !== false}
+                            onChange={(v) => updateScraperSettings({ useDoubanProvider: v })}
+                        />
+                        <Toggle
+                            label="喜马拉雅 (Ximalaya)"
+                            desc="中文有声书资源匹配"
+                            checked={user.preferences.scraper.useXimalaya !== false}
+                            onChange={(v) => updateScraperSettings({ useXimalaya: v })}
+                        />
+                        <Toggle
+                            label="喜马拉雅 Provider (ABS 镜像)"
+                            desc="对接 abs-ximalaya 元数据接口"
+                            checked={user.preferences.scraper.useAbsXimalayaProvider !== false}
+                            onChange={(v) => updateScraperSettings({ useAbsXimalayaProvider: v })}
+                        />
+                        <Toggle
+                            label="Apple iTunes API"
                             desc="高质量封面 (600x600)，元数据标准"
-                            checked={user.preferences.scraper.useItunes}
+                            checked={user.preferences.scraper.useItunes !== false}
                             onChange={(v) => updateScraperSettings({ useItunes: v })}
                         />
-                        <Toggle 
-                            label="Google Books" 
+                        <Toggle
+                            label="Google Books"
                             desc="图书出版信息、ISBN、简介"
-                            checked={user.preferences.scraper.useGoogleBooks}
+                            checked={user.preferences.scraper.useGoogleBooks !== false}
                             onChange={(v) => updateScraperSettings({ useGoogleBooks: v })}
                         />
-                        <Toggle 
-                            label="喜马拉雅 (Ximalaya)" 
-                            desc="中文有声书资源匹配"
-                            checked={false} // Mock: Currently disabled in logic but UI needed
-                            onChange={() => showToast("暂不支持该源", "info")}
-                        />
-                        <Toggle 
-                            label="OpenLibrary" 
+                        <Toggle
+                            label="OpenLibrary"
                             desc="开源图书数据库，适合英文书籍"
-                            checked={user.preferences.scraper.useOpenLibrary}
+                            checked={user.preferences.scraper.useOpenLibrary !== false}
                             onChange={(v) => updateScraperSettings({ useOpenLibrary: v })}
                         />
+                        <Input
+                            label="优先顺序 (逗号分隔)"
+                            placeholder="Douban,Ximalaya,iTunes"
+                            value={(user.preferences.scraper.preferredSources || []).join(',')}
+                            onChange={(v) => updateScraperSettings({ preferredSources: v.split(',').map(s => s.trim()).filter(Boolean) })}
+                        />
                         <div className="md:col-span-2">
-                            <Input 
-                                label="自定义数据源 (Custom JSON API)" 
+                            <Input
+                                label="豆瓣 Provider 地址 (可选)"
+                                placeholder="http://abs-douban:3000"
+                                value={user.preferences.scraper.doubanProviderUrl || ''}
+                                onChange={(v) => updateScraperSettings({ doubanProviderUrl: v })}
+                            />
+                        </div>
+                        <div className="md:col-span-2">
+                            <Input
+                                label="喜马拉雅 Provider 地址 (可选)"
+                                placeholder="http://abs-ximalaya:3000"
+                                value={user.preferences.scraper.absXimalayaProviderUrl || ''}
+                                onChange={(v) => updateScraperSettings({ absXimalayaProviderUrl: v })}
+                            />
+                        </div>
+                        <div className="md:col-span-2">
+                            <Input
+                                label="自定义数据源 (Custom JSON API)"
                                 placeholder="https://my-api.com/search?q="
                                 value={user.preferences.scraper.customSourceUrl}
                                 onChange={(v) => updateScraperSettings({ customSourceUrl: v })}

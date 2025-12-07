@@ -132,6 +132,13 @@ export interface UserPreferences {
     useItunes: boolean;
     useGoogleBooks: boolean;
     useOpenLibrary: boolean;
+    useXimalaya?: boolean;
+    useDouban?: boolean;
+    useAbsXimalayaProvider?: boolean;
+    useDoubanProvider?: boolean;
+    absXimalayaProviderUrl?: string;
+    doubanProviderUrl?: string;
+    preferredSources?: string[];
     customSourceUrl: string; // User defined JSON API
     
     // Ingestion Logic
@@ -154,6 +161,10 @@ export interface ScrapeConfig {
   useOpenLibrary?: boolean;
   useXimalaya?: boolean;
   useDouban?: boolean;
+  useAbsXimalayaProvider?: boolean;
+  useDoubanProvider?: boolean;
+  absXimalayaProviderUrl?: string;
+  doubanProviderUrl?: string;
   customSourceUrl?: string;
   preferredSources?: string[];
 }

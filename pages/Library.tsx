@@ -8,6 +8,7 @@ import { Icon } from '../components/Icons';
 import { ImageUploader } from '../components/ui/ImageUploader';
 import { MetadataSearchModal } from '../components/MetadataSearchModal';
 import { RenamePreviewModal } from '../components/RenamePreviewModal';
+import { DEFAULT_SCRAPE_CONFIG } from '../utils/scraper';
 
 // --- Long Press Hook for Mobile Context Menu ---
 const useLongPress = (callback: () => void, ms = 500) => {
@@ -158,13 +159,10 @@ export const Library: React.FC = () => {
   const [showScraper, setShowScraper] = useState(false);
   const [showRename, setShowRename] = useState(false);
 
-  const defaultScrapeConfig: ScrapeConfig = {
-      useDouban: true,
-      useXimalaya: true,
-      useItunes: true,
-      useGoogleBooks: true,
-      preferredSources: ['Douban', 'Ximalaya', 'iTunes']
-  };
+  const defaultScrapeConfig = useMemo<ScrapeConfig>(() => {
+      const prefs = user?.preferences.scraper;
+      return prefs ? { ...DEFAULT_SCRAPE_CONFIG, ...prefs } : DEFAULT_SCRAPE_CONFIG;
+  }, [user?.preferences.scraper]);
 
   const persistBook = async (book: Book) => {
       try {
@@ -430,7 +428,7 @@ export const Library: React.FC = () => {
                               <button type="button" onClick={handleRescrape} className="px-3 py-1.5 rounded-lg bg-cyan-500 text-white text-xs font-bold shadow-sm">重跑刮削</button>
                           </div>
                           <div className="grid grid-cols-2 gap-2 text-sm">
-                              {[{key:'useDouban',label:'豆瓣'}, {key:'useXimalaya',label:'喜马拉雅'}, {key:'useItunes',label:'iTunes'}, {key:'useGoogleBooks',label:'Google Books'}, {key:'useOpenLibrary',label:'Open Library'}].map(opt => (
+                              {[{key:'useDouban',label:'豆瓣'}, {key:'useDoubanProvider',label:'豆瓣 Provider'}, {key:'useXimalaya',label:'喜马拉雅'}, {key:'useAbsXimalayaProvider',label:'喜马 Provider'}, {key:'useItunes',label:'iTunes'}, {key:'useGoogleBooks',label:'Google Books'}, {key:'useOpenLibrary',label:'Open Library'}].map(opt => (
                                   <label key={opt.key} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white dark:bg-black/40 border border-white/10">
                                       <input type="checkbox" checked={(editingBook.scrapeConfig || defaultScrapeConfig)[opt.key as keyof ScrapeConfig] !== false}
                                           onChange={(e) => updateScrapeConfig(opt.key as keyof ScrapeConfig, e.target.checked)} />
@@ -446,6 +444,22 @@ export const Library: React.FC = () => {
                                   onChange={(e) => updateScrapeConfig('customSourceUrl', e.target.value)}
                                   className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-black/40 border border-transparent focus:border-cyan-500 outline-none dark:text-white"
                                   placeholder="https://example.com/api?q="
+                              />
+                              <label className="text-xs font-bold text-slate-500 uppercase">豆瓣 Provider 地址</label>
+                              <input
+                                  type="url"
+                                  value={(editingBook.scrapeConfig || defaultScrapeConfig).doubanProviderUrl || ''}
+                                  onChange={(e) => updateScrapeConfig('doubanProviderUrl', e.target.value)}
+                                  className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-black/40 border border-transparent focus:border-cyan-500 outline-none dark:text-white"
+                                  placeholder="http://abs-douban:3000"
+                              />
+                              <label className="text-xs font-bold text-slate-500 uppercase">喜马拉雅 Provider 地址</label>
+                              <input
+                                  type="url"
+                                  value={(editingBook.scrapeConfig || defaultScrapeConfig).absXimalayaProviderUrl || ''}
+                                  onChange={(e) => updateScrapeConfig('absXimalayaProviderUrl', e.target.value)}
+                                  className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-black/40 border border-transparent focus:border-cyan-500 outline-none dark:text-white"
+                                  placeholder="http://abs-ximalaya:3000"
                               />
                               <label className="text-xs font-bold text-slate-500 uppercase">优先顺序 (逗号分隔)</label>
                               <input

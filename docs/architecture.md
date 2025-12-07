@@ -6,6 +6,8 @@ backend/
   app/
     api/                 # FastAPI 路由、依赖与安全
     models.py            # SQLModel 表定义
+    db.py                # 异步引擎/会话工厂，支持 aiosqlite 与连接池调优
+    repositories.py      # 仓储层封装，隔离查询与业务逻辑，便于单测
     services/            # 业务服务（刮削、转码、队列、推送）
     workers/             # APScheduler/Watchdog 任务
     core/                # 配置、日志、数据库引导
@@ -24,6 +26,10 @@ frontend/
 
 ## 步骤二：数据库核心模型代码
 详见 `backend/app/models.py`，覆盖 Users、Books、BookSettings 等关键表，包含进度与播放会话的审计字段，满足断点失忆症、独立倍速与响度管理的场景需求。
+
+### 异步引擎/仓储
+- `backend/app/db.py`: 使用 `sqlite+aiosqlite` 的 `create_async_engine`，支持连接池、pool_pre_ping 与 `get_session` 异步上下文，开箱即用。
+- `backend/app/repositories.py`: 封装用户、书籍、进度的读写方法，保证类型安全与唯一约束友好，适合在 FastAPI 路由中直接注入使用。
 
 ## 步骤三：核心 API 路由规划
 | Method & Path | 功能 | 关键点 |

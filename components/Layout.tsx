@@ -166,7 +166,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       </div>
 
       {/* Main Content Area */}
-      <main className="flex-1 h-full overflow-y-auto relative z-0 scrollbar-hide md:scrollbar-default pt-14 md:pt-0 pb-36 md:pb-0">
+      <main className="flex-1 h-full overflow-y-auto relative z-0 scrollbar-hide md:scrollbar-default pt-14 md:pt-0 pb-[180px] md:pb-6">
         {!user?.preferences.oledMode && <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-white/40 to-transparent dark:from-black/20 pointer-events-none sticky top-0 z-10 hidden md:block" />}
         {children}
       </main>
