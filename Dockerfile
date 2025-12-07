@@ -4,9 +4,9 @@
 FROM node:18-alpine as builder
 WORKDIR /app
 # 复制根目录的依赖配置
-COPY package.json ./
-# 安装依赖
-RUN npm install
+COPY package*.json ./
+# 安装依赖（使用锁文件确保与 NAS 构建一致）
+RUN npm ci
 # 复制所有源代码
 COPY . .
 # 执行构建 (Vite 会打包到 /dist)

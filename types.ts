@@ -48,15 +48,24 @@ export interface Book {
   description?: string;
   addedAt: number;
   seriesId?: string;
-  
+  series?: string;
+  seriesIndex?: number;
+  folderPath?: string;
+  scrapeConfidence?: number;
+  metadataSource?: string;
+  reviewNeeded?: boolean;
+  ingestNotes?: string;
+  scrapeConfig?: ScrapeConfig;
+  lastPlayedAt?: number | null;
+
   // Frontend Structure
-  chapters?: Chapter[]; 
+  chapters?: Chapter[];
   tracks?: Track[]; // Backend AudioFiles mapped to Tracks
   audioUrl?: string; // Fallback or direct URL
   
   isLiked?: boolean;
   bookmarks?: Bookmark[];
-  characters?: Character[]; 
+  characters?: Character[];
   tags?: string[];
   trackNumber?: number; 
   fileType?: string; 
@@ -139,6 +148,16 @@ export interface UserPreferences {
   };
 }
 
+export interface ScrapeConfig {
+  useItunes?: boolean;
+  useGoogleBooks?: boolean;
+  useOpenLibrary?: boolean;
+  useXimalaya?: boolean;
+  useDouban?: boolean;
+  customSourceUrl?: string;
+  preferredSources?: string[];
+}
+
 export interface User {
   username: string;
   isAuthenticated: boolean;
@@ -158,13 +177,14 @@ export interface PlayerState {
   currentTime: number; // Global Time
   duration: number; // Global Duration
   volume: number;
-  speed: number; 
+  speed: number;
   isFullScreen: boolean;
   sleepTimer: number | null;
   sleepEndOfChapter: boolean;
   zenMode: boolean;
-  lastSeekPosition: number | null; 
-  ambience: 'none' | 'rain' | 'fire' | 'forest'; 
+  lastSeekPosition: number | null;
+  lastPausedAt?: number | null;
+  ambience: 'none' | 'rain' | 'fire' | 'forest';
   ambienceVolume: number;
   abLoop: { start: number | null; end: number | null; active: boolean };
   vocalBoost: boolean;
