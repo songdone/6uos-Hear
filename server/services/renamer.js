@@ -16,6 +16,16 @@ const ensureDir = (targetPath) => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 };
 
+const resolveInsideRoot = (libraryRoot, target) => {
+  const normalizedRoot = path.resolve(libraryRoot);
+  const resolved = path.resolve(normalizedRoot, target);
+  const isInside = resolved === normalizedRoot || resolved.startsWith(normalizedRoot + path.sep);
+  if (!isInside) {
+    throw new Error(`Target escapes library root: ${target}`);
+  }
+  return resolved;
+};
+
 const buildRenamePlan = (book, audioFiles, template, options = {}) => {
   const cleanNames = options.cleanNames ?? true;
   const plan = [];
@@ -67,8 +77,14 @@ const applyRenamePlan = (libraryRoot, plan) => {
   const applied = [];
   for (const item of plan) {
     if (item.conflict) continue;
-    const from = path.join(libraryRoot, item.from);
-    const to = path.join(libraryRoot, item.to);
+    let from, to;
+    try {
+      from = resolveInsideRoot(libraryRoot, item.from);
+      to = resolveInsideRoot(libraryRoot, item.to);
+    } catch (err) {
+      // Skip unsafe paths and continue processing safe entries
+      continue;
+    }
     ensureDir(to);
     fs.renameSync(from, to);
     applied.push({ from: item.from, to: item.to });
