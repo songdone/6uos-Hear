@@ -7,9 +7,10 @@ class HybridScraper {
       itunes: 'https://itunes.apple.com/search',
       google: 'https://www.googleapis.com/books/v1/volumes',
       ximalaya: 'https://www.ximalaya.com/revision/search/main',
-      openLibrary: 'https://openlibrary.org/search.json'
+      openLibrary: 'https://openlibrary.org/search.json',
+      douban: 'https://frodo.douban.com/api/v2/search'
     };
-    
+
     this.headers = {
       'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     };
@@ -62,6 +63,25 @@ class HybridScraper {
     } catch (e) { return null; }
   }
 
+  async fetchItunesList(query, limit = 5) {
+    try {
+      const res = await axios.get(this.sources.itunes, {
+        params: { term: query, country: 'cn', media: 'audiobook', entity: 'audiobook', limit },
+        timeout: 4000
+      });
+      if (!res.data.results?.length) return [];
+      return res.data.results.map((data) => ({
+        source: 'iTunes',
+        title: data.collectionName,
+        author: data.artistName,
+        description: data.description,
+        coverUrl: data.artworkUrl100?.replace('100x100bb', '600x600bb'),
+        publishYear: data.releaseDate ? data.releaseDate.substring(0, 4) : null,
+        language: 'zh-cn'
+      }));
+    } catch (e) { return []; }
+  }
+
   async fetchXimalaya(query) {
     try {
       const res = await axios.get(this.sources.ximalaya, {
@@ -104,6 +124,29 @@ class HybridScraper {
     } catch (e) { return null; }
   }
 
+  async fetchGoogleBooksList(query, limit = 5) {
+    try {
+      const res = await axios.get(this.sources.google, {
+        params: { q: query, maxResults: limit, printType: 'books', langRestrict: 'zh' },
+        timeout: 4000
+      });
+      if (!res.data.items?.length) return [];
+      return res.data.items.map((item) => {
+        const info = item.volumeInfo;
+        return {
+          source: 'GoogleBooks',
+          title: info.title,
+          author: info.authors?.join(', '),
+          description: info.description,
+          coverUrl: info.imageLinks?.extraLarge || info.imageLinks?.thumbnail,
+          publishYear: info.publishedDate?.substring(0, 4),
+          publisher: info.publisher,
+          tags: info.categories?.join(',')
+        };
+      });
+    } catch (e) { return []; }
+  }
+
   async fetchOpenLibrary(query) {
     try {
       const res = await axios.get(this.sources.openLibrary, {
@@ -121,6 +164,58 @@ class HybridScraper {
         publisher: doc.publisher?.[0]
       };
     } catch (e) { return null; }
+  }
+
+  async fetchOpenLibraryList(query, limit = 5) {
+    try {
+      const res = await axios.get(this.sources.openLibrary, {
+        params: { q: query, limit },
+        timeout: 5000
+      });
+      const docs = res.data.docs || [];
+      return docs.map((doc) => ({
+        source: 'OpenLibrary',
+        title: doc.title,
+        author: doc.author_name?.[0],
+        publishYear: doc.first_publish_year?.toString(),
+        coverUrl: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg` : null,
+        publisher: doc.publisher?.[0]
+      }));
+    } catch (e) { return []; }
+  }
+
+  async fetchDoubanList(query, limit = 5) {
+    try {
+      const res = await axios.get(this.sources.douban, {
+        params: { q: query, count: limit },
+        timeout: 5000
+      });
+      const items = res.data?.items || [];
+      return items.map((item) => ({
+        source: 'Douban',
+        title: item.target?.title || item.title,
+        author: item.target?.author || item.target?.card_subtitle || item.subtitle,
+        description: item.target?.abstract || item.target?.intro,
+        coverUrl: item.target?.cover_url || item.pic,
+        tags: item.target?.tags?.map((t) => t.name).join(', ')
+      }));
+    } catch (e) { return []; }
+  }
+
+  async fetchDouban(query) {
+    const list = await this.fetchDoubanList(query, 1);
+    return list[0] || null;
+  }
+
+  scoreResult(result, query) {
+    const normalizedQuery = query.toLowerCase();
+    let score = 0.35;
+    if (result.title?.toLowerCase().includes(normalizedQuery)) score += 0.25;
+    if (result.author) score += 0.1;
+    if (result.coverUrl) score += 0.1;
+    if (result.description && result.description.length > 60) score += 0.1;
+    if (result.tags) score += 0.05;
+    return Math.min(1, score);
   }
 
   mergeMetadata(local, ...sources) {
@@ -166,26 +261,69 @@ class HybridScraper {
 
   async scrape(query, localMetadata = {}, config = {}) {
     const enabledSources = [];
-    if (config.useItunes) enabledSources.push(this.fetchItunes(query));
-    if (config.useXimalaya) enabledSources.push(this.fetchXimalaya(query)); // Assuming logic passes this
-    if (config.useGoogleBooks) enabledSources.push(this.fetchGoogleBooks(query));
-    if (config.useOpenLibrary) enabledSources.push(this.fetchOpenLibrary(query));
-    if (config.customSourceUrl) enabledSources.push(this.fetchCustomSource(query, config.customSourceUrl));
+    const preferred = config.preferredSources || [];
+    const pushSource = (name, fn) => {
+        if (preferred.length === 0 || preferred.includes(name)) enabledSources.push(fn);
+    };
 
-    // Default to core sources if no config passed
-    if (enabledSources.length === 0) {
-        enabledSources.push(this.fetchItunes(query));
-        enabledSources.push(this.fetchXimalaya(query));
+    pushSource('iTunes', this.fetchItunes(query));
+    pushSource('Ximalaya', config.useXimalaya ? this.fetchXimalaya(query) : null);
+    pushSource('GoogleBooks', config.useGoogleBooks !== false ? this.fetchGoogleBooks(query) : null);
+    pushSource('OpenLibrary', config.useOpenLibrary ? this.fetchOpenLibrary(query) : null);
+    pushSource('Douban', config.useDouban !== false ? this.fetchDouban(query) : null);
+    pushSource('Custom', config.customSourceUrl ? this.fetchCustomSource(query, config.customSourceUrl) : null);
+
+    const filteredSources = enabledSources.filter(Boolean);
+    if (filteredSources.length === 0) {
+        filteredSources.push(this.fetchItunes(query));
+        filteredSources.push(this.fetchXimalaya(query));
     }
 
     console.log(`[Scraper] 🚀 Hybrid Scrape: "${query}" running ${enabledSources.length} sources...`);
-    
-    const results = await Promise.allSettled(enabledSources);
+
+    const results = await Promise.allSettled(filteredSources);
     const successResults = results
         .filter(r => r.status === 'fulfilled' && r.value !== null)
         .map(r => r.value);
 
-    return this.mergeMetadata(localMetadata, ...successResults);
+    const merged = this.mergeMetadata(localMetadata, ...successResults);
+    const best = successResults[0];
+    return {
+      ...merged,
+      metadataSource: best?.source || successResults[0]?.source,
+      scrapeConfidence: this.scoreResult(best || merged, query)
+    };
+  }
+
+  async searchAll(query, config = {}) {
+    const tasks = [];
+    const preferred = config.preferredSources || [];
+    const pushTask = (name, promiseFactory) => {
+        if (preferred.length === 0 || preferred.includes(name)) tasks.push(promiseFactory);
+    };
+
+    pushTask('iTunes', this.fetchItunesList(query));
+    pushTask('GoogleBooks', config.useGoogleBooks !== false ? this.fetchGoogleBooksList(query) : null);
+    pushTask('OpenLibrary', config.useOpenLibrary ? this.fetchOpenLibraryList(query) : null);
+    pushTask('Ximalaya', config.useXimalaya ? this.fetchXimalaya(query).then(r => r ? [r] : []) : null);
+    pushTask('Douban', config.useDouban !== false ? this.fetchDoubanList(query) : null);
+    pushTask('Custom', config.customSourceUrl ? this.fetchCustomSource(query, config.customSourceUrl).then(r => r ? [r] : []) : null);
+
+    const filtered = tasks.filter(Boolean);
+
+    if (filtered.length === 0) filtered.push(this.fetchItunesList(query));
+
+    const settled = await Promise.allSettled(filtered);
+    const flattened = settled
+      .filter(r => r.status === 'fulfilled' && Array.isArray(r.value))
+      .flatMap(r => r.value);
+
+    const enriched = flattened.map(item => ({
+      ...item,
+      confidence: this.scoreResult(item, query)
+    }));
+
+    return enriched.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
   }
 }
 

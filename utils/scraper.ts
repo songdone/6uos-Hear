@@ -9,7 +9,22 @@ interface ScraperResult {
   publisher?: string;
   publishedDate?: string;
   narrator?: string;
-  source: 'iTunes' | 'GoogleBooks';
+  language?: string;
+  tags?: string;
+  confidence?: number;
+  source: 'iTunes' | 'GoogleBooks' | 'Ximalaya' | 'OpenLibrary' | 'Douban' | 'Custom';
+}
+
+const API_BASE = '/api/metadata/search';
+
+export interface ScrapeConfig {
+  useItunes?: boolean;
+  useGoogleBooks?: boolean;
+  useOpenLibrary?: boolean;
+  useXimalaya?: boolean;
+  useDouban?: boolean;
+  customSourceUrl?: string;
+  preferredSources?: string[];
 }
 
 // 优化 1: 高清封面替换逻辑 (iTunes 返回的通常是 100x100)
@@ -81,11 +96,24 @@ export const searchGoogleBooks = async (query: string): Promise<ScraperResult[]>
 };
 
 // 优化 7: 聚合搜索逻辑
-export const scrapeMetadata = async (query: string): Promise<ScraperResult[]> => {
+export const scrapeMetadata = async (query: string, config?: ScrapeConfig): Promise<ScraperResult[]> => {
+    try {
+      const res = await fetch(API_BASE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, config })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data as ScraperResult[];
+      }
+    } catch (error) {
+      console.error('Backend scraper unavailable, falling back to client sources.', error);
+    }
+
     const [itunes, google] = await Promise.all([
         searchItunes(query),
         searchGoogleBooks(query)
     ]);
-    // 优化 8: 结果去重与排序 (优先 iTunes 因为有声书信息更准)
     return [...itunes, ...google];
 };
