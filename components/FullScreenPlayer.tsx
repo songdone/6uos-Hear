@@ -35,14 +35,26 @@ export const FullScreenPlayer: React.FC = () => {
   const book = getBook(currentBookId);
   const [activeTab, setActiveTab] = useState<'chapters' | 'characters' | 'ambience' | null>(null);
   const [showSleepMenu, setShowSleepMenu] = useState(false);
-  const [showShare, setShowShare] = useState(false); 
-  const [drivingMode, setDrivingMode] = useState(false); 
-  const [remainingSleepTime, setRemainingSleepTime] = useState<number | null>(null);
-  
+  const [showShare, setShowShare] = useState(false);
+  const [drivingMode, setDrivingMode] = useState(false);
+  const [remainingSleepTime, setRemainingSleepTime] = useState<number | null>(null); // seconds
+
   const lastTapRef = useRef<number>(0);
   const [gestureFeedback, setGestureFeedback] = useState<'forward' | 'rewind' | null>(null);
 
   const seekSeconds = user?.preferences.seekInterval || 15;
+  const progressPercent = book?.duration ? Math.min(100, (currentTime / book.duration) * 100) : 0;
+  const remainingSeconds = book?.duration ? Math.max(0, Math.floor(book.duration - currentTime)) : 0;
+  const activeChapter = book?.chapters?.find((c) => currentTime >= c.startTime && currentTime < c.startTime + c.duration);
+  const chapterIndex = book?.chapters?.findIndex((c) => c === activeChapter) ?? -1;
+  const currentChapterLabel = activeChapter ? `${chapterIndex + 1}/${book?.chapters?.length ?? 0}` : '—';
+
+  const formatClock = (secs: number) => {
+      const h = Math.floor(secs / 3600);
+      const m = Math.floor((secs % 3600) / 60);
+      const s = secs % 60;
+      return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}` : `${m}:${s.toString().padStart(2, '0')}`;
+  };
 
   // Reset tab when book changes to prevent stale UI
   useEffect(() => {
@@ -53,9 +65,9 @@ export const FullScreenPlayer: React.FC = () => {
   useEffect(() => {
       if (sleepTimer) {
           const i = setInterval(() => {
-              const diff = Math.max(0, Math.ceil((sleepTimer - Date.now()) / 60000));
-              setRemainingSleepTime(diff);
-          }, 1000);
+              const diffMs = Math.max(0, sleepTimer - Date.now());
+              setRemainingSleepTime(Math.ceil(diffMs / 1000));
+          }, 500);
           return () => clearInterval(i);
       } else {
           setRemainingSleepTime(null);
@@ -145,7 +157,7 @@ export const FullScreenPlayer: React.FC = () => {
       <DynamicBackground isPlaying={isPlaying} coverUrl={book.coverUrl} />
       
       {/* Gesture Overlay */}
-      <div className="absolute inset-0 z-0 flex">
+      <div className="absolute inset-x-0 top-20 bottom-40 md:bottom-52 z-0 flex">
           <div className="flex-1 h-full" onClick={(e) => handleDoubleTap(e, 'left')} />
           <div className="flex-1 h-full" onClick={(e) => handleDoubleTap(e, 'right')} />
       </div>
@@ -187,12 +199,12 @@ export const FullScreenPlayer: React.FC = () => {
                 >
                   <Icon.Sun className="w-5 h-5" />
                 </button>
-                <button 
+                <button
                   className={`p-3 md:p-2 rounded-full backdrop-blur-md transition flex items-center gap-1 active:scale-90 ${sleepTimer || sleepEndOfChapter ? 'bg-cyan-500 text-white' : 'bg-white/10 text-white'}`}
                   onClick={() => setShowSleepMenu(!showSleepMenu)}
                 >
                   <Icon.Clock className="w-5 h-5" />
-                  {remainingSleepTime ? <span className="text-[10px] font-bold hidden md:inline">{remainingSleepTime}m</span> : sleepEndOfChapter && <span className="text-[10px] font-bold hidden md:inline">CH</span>}
+                  {remainingSleepTime !== null ? <span className="text-[10px] font-bold hidden md:inline">{formatClock(remainingSleepTime)}</span> : sleepEndOfChapter && <span className="text-[10px] font-bold hidden md:inline">CH</span>}
                 </button>
 
                 {/* Sleep Menu Popup */}
@@ -216,25 +228,30 @@ export const FullScreenPlayer: React.FC = () => {
       )}
 
       {/* 2. Visual Area (Flexible Height) */}
-      <div className={`relative z-10 flex-1 flex flex-col items-center justify-center px-8 transition-all duration-500 min-h-0 ${activeTab ? 'scale-90 opacity-40 blur-[2px]' : 'scale-100 opacity-100'}`}>
-        <div 
+      <div className={`relative z-10 flex-1 flex flex-col items-center justify-center px-6 transition-all duration-500 min-h-0 ${activeTab ? 'scale-90 opacity-40 blur-[2px]' : 'scale-100 opacity-100'}`}>
+        <div
             onClick={zenMode ? toggleZenMode : undefined}
             className={`
-                relative transition-all duration-700 group
-                ${zenMode ? 'w-[80vw] h-[80vw] max-w-[500px] max-h-[500px] cursor-pointer' : 'w-[65vw] h-[65vw] max-w-[350px] max-h-[350px] mb-4 md:mb-8'} 
+                relative transition-all duration-700 group aspect-square
+                ${zenMode ? 'w-[70vw] max-w-[380px] cursor-pointer' : 'w-[62vw] max-w-[280px] md:w-[48vw] md:max-w-[420px] mb-3 md:mb-8'}
             `}
         >
            {/* Vinyl Record Effect */}
            <div className={`absolute inset-0 rounded-full bg-black shadow-2xl overflow-hidden border-[4px] md:border-[6px] border-black/80 ${isPlaying ? 'animate-[spin_10s_linear_infinite]' : 'animate-[spin_2s_ease-out_forwards_paused]'}`}>
-                <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover opacity-90" />
-                <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent pointer-events-none rounded-full" />
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 bg-slate-900 rounded-full border-2 border-slate-700 flex items-center justify-center">
-                    <div className="w-2 h-2 bg-black rounded-full" />
-                </div>
+                <div className="absolute inset-[12%] bg-black/60 rounded-full shadow-inner"></div>
+                <div className="absolute inset-[24%] bg-black/30 rounded-full"></div>
            </div>
 
+           {/* Cover Art with slight inset to avoid stretching */}
+           <div className="absolute inset-[18%] rounded-full overflow-hidden shadow-2xl shadow-black/50">
+                <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover scale-[1.02]" />
+           </div>
+
+           {/* Center Pin */}
+           <div className="absolute inset-[45%] rounded-full bg-white shadow-lg"></div>
+
            {!zenMode && (
-               <div className="absolute -bottom-12 left-0 right-0 flex justify-between items-center w-full px-4">
+               <div className="absolute -bottom-10 left-0 right-0 flex justify-between items-center w-full px-4">
                    <button onClick={() => toggleLike(book.id)} className="p-3 bg-white/10 backdrop-blur-xl rounded-full text-white hover:bg-white/20 transition active:scale-90">
                       <Icon.Heart fill={book.isLiked} className={book.isLiked ? "text-red-500" : "text-white"} />
                    </button>
@@ -246,12 +263,50 @@ export const FullScreenPlayer: React.FC = () => {
         </div>
         
         {!zenMode && (
-            <div className="text-center w-full max-w-md animate-[fadeIn_0.5s] mt-2 mb-2 flex-shrink-0">
-              <h2 className="text-2xl font-bold text-white mb-1 leading-tight drop-shadow-lg line-clamp-1">{book.title}</h2>
-              <p className="text-base text-white/70 font-medium line-clamp-1">{book.author}</p>
+            <div className="w-full max-w-[420px] mt-2 md:mt-4 animate-[fadeIn_0.5s]">
+                <div className="rounded-3xl bg-white/15 dark:bg-black/40 backdrop-blur-xl border border-white/20 px-5 py-4 shadow-xl text-center space-y-1">
+                    <p className="text-lg md:text-2xl font-black text-white line-clamp-2 drop-shadow">{book.title}</p>
+                    <p className="text-sm md:text-base text-white/80 font-medium">{book.author}</p>
+                    <div className="flex items-center justify-center gap-3 text-[11px] text-white/70">
+                        <span>{currentChapterLabel}</span>
+                        <span className="w-1 h-1 rounded-full bg-white/30" />
+                        <span>{Math.round(progressPercent)}%</span>
+                        {remainingSleepTime !== null && (
+                            <>
+                              <span className="w-1 h-1 rounded-full bg-white/30" />
+                              <span className="flex items-center gap-1"><Icon.Clock className="w-3 h-3" /> {formatClock(remainingSleepTime)}</span>
+                            </>
+                        )}
+                    </div>
+                </div>
             </div>
         )}
       </div>
+
+      {!zenMode && (
+          <div className="relative z-20 w-full max-w-4xl px-8 pb-2">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[11px] uppercase tracking-wide">
+                <div className="p-3 rounded-2xl bg-white/20 dark:bg-black/30 backdrop-blur-md text-white/80 border border-white/10 shadow-inner">
+                    <div className="flex items-center justify-between font-bold"><span>进度</span><span>{progressPercent.toFixed(0)}%</span></div>
+                    <div className="mt-1 h-1.5 rounded-full bg-white/20 overflow-hidden">
+                        <div className="h-full bg-cyan-400" style={{ width: `${progressPercent}%` }} />
+                    </div>
+                </div>
+                <div className="p-3 rounded-2xl bg-white/20 dark:bg-black/30 backdrop-blur-md text-white/80 border border-white/10 shadow-inner">
+                    <div className="font-bold flex items-center justify-between"><span>剩余</span><span>{formatClock(remainingSeconds)}</span></div>
+                    <p className="text-[10px] opacity-70 mt-1">智能回退已启用</p>
+                </div>
+                <div className="p-3 rounded-2xl bg-white/20 dark:bg-black/30 backdrop-blur-md text-white/80 border border-white/10 shadow-inner hidden md:block">
+                    <div className="font-bold flex items-center justify-between"><span>章节</span><span>{currentChapterLabel}</span></div>
+                    <p className="text-[10px] opacity-70 mt-1 line-clamp-1">{activeChapter?.title || '自动章节定位'}</p>
+                </div>
+                <div className="p-3 rounded-2xl bg-white/20 dark:bg-black/30 backdrop-blur-md text-white/80 border border-white/10 shadow-inner">
+                    <div className="font-bold flex items-center justify-between"><span>设备适配</span><span className="text-[10px] px-2 py-0.5 bg-white/10 rounded-full">多端</span></div>
+                    <p className="text-[10px] opacity-70 mt-1">安全区留白 & 手势友好</p>
+                </div>
+            </div>
+          </div>
+      )}
 
       {/* Zen Mode Hint */}
       {zenMode && (
@@ -262,7 +317,7 @@ export const FullScreenPlayer: React.FC = () => {
       {!zenMode && (
           <div className={`relative z-40 bg-white/90 dark:bg-black/80 backdrop-blur-2xl rounded-t-[2.5rem] shadow-[0_-10px_40px_rgba(0,0,0,0.3)] transition-transform duration-500 ${activeTab ? 'translate-y-full' : 'translate-y-0'} pb-safe flex-shrink-0`}>
             <div className="px-6 pt-6 pb-8 md:p-8 space-y-4 max-w-2xl mx-auto">
-               
+
                {/* Tools Row */}
                <div className="flex items-center justify-between text-xs font-bold text-slate-500">
                    <button onClick={handleABClick} className={`px-3 py-1.5 rounded-lg transition-all ${abLoop.active ? 'bg-cyan-500 text-white shadow-lg' : abLoop.start ? 'bg-cyan-100 text-cyan-600' : 'bg-slate-100 dark:bg-white/5'}`}>
@@ -271,6 +326,14 @@ export const FullScreenPlayer: React.FC = () => {
                    <button onClick={toggleVocalBoost} className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1 ${vocalBoost ? 'bg-purple-500 text-white shadow-lg' : 'bg-slate-100 dark:bg-white/5'}`}>
                        <Icon.Volume className="w-3 h-3" /> 人声增强
                    </button>
+               </div>
+
+               <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 px-1">
+                    <span className="flex items-center gap-1">智能回退 <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-white/5">5m/1h/24h</span></span>
+                    <span className="flex items-center gap-1">
+                        <Icon.Clock className="w-3 h-3" />
+                        {sleepEndOfChapter ? '本章结束暂停' : sleepTimer && remainingSleepTime !== null ? `剩余 ${formatClock(remainingSleepTime)}` : '未设置'}
+                    </span>
                </div>
 
                {/* Progress */}
@@ -316,7 +379,7 @@ export const FullScreenPlayer: React.FC = () => {
 
       {/* Expanded Drawers (Overlay) */}
       {!zenMode && (
-        <div className={`absolute inset-x-0 bottom-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-3xl rounded-t-[2.5rem] shadow-2xl transition-transform duration-500 flex flex-col h-[70vh] ${activeTab ? 'translate-y-0' : 'translate-y-full'}`}>
+        <div className={`absolute inset-x-0 bottom-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-3xl rounded-t-[2.5rem] shadow-2xl transition-transform duration-500 flex flex-col h-[65vh] md:h-[55vh] ${activeTab ? 'translate-y-0' : 'translate-y-full'}`}>
             <div className="p-6 border-b border-slate-100 dark:border-white/5 flex justify-between items-center flex-shrink-0">
                 <span className="text-lg font-bold text-slate-800 dark:text-white ml-2">
                     {activeTab === 'chapters' && '章节列表'}

@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
-import { Book, PlayerState, Chapter, Series, Bookmark, HistoryEntry, Track, MetadataProvider, ToastMessage } from '../types';
+import { Book, PlayerState, Chapter, Series, Bookmark, HistoryEntry, Track, MetadataProvider, ToastMessage, ScrapeConfig } from '../types';
 import { STORAGE_KEYS, DEFAULT_BOOKS, MOCK_SERIES } from '../constants';
 import { useAuth } from './AuthContext';
 
@@ -92,6 +92,7 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     sleepEndOfChapter: false,
     zenMode: false,
     lastSeekPosition: null,
+    lastPausedAt: null,
     ambience: 'none',
     ambienceVolume: 0.2, // Default lower for background
     abLoop: { start: null, end: null, active: false },
@@ -108,17 +109,31 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   
   const [dailyProgress, setDailyProgress] = useState(0); 
-  const dailyGoal = user?.preferences.dailyGoalMinutes || 30; 
+  const dailyGoal = user?.preferences.dailyGoalMinutes || 30;
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ambienceAudioRef = useRef<HTMLAudioElement | null>(null); // Dedicated Ambience Player
+  const lastProgressTickRef = useRef<number>(Date.now());
+  const sleepTriggeredRef = useRef(false);
+
+  const stateRef = useRef<PlayerState>(state);
+  useEffect(() => {
+      stateRef.current = state;
+  }, [state]);
+
+  const backendProgressThrottleRef = useRef<number>(0);
   
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionStartRef = useRef<number>(Date.now());
 
   // --- Helper: Convert Backend Book to Frontend Book ---
   const mapBackendBook = (b: any): Book => {
-      const tracks: Track[] = (b.AudioFiles || []).map((f: any) => ({
+      const sortedFiles = (b.AudioFiles || []).slice().sort((a: any, b: any) => {
+          if (a.trackNumber && b.trackNumber && a.trackNumber !== b.trackNumber) return a.trackNumber - b.trackNumber;
+          return (a.filename || '').localeCompare(b.filename || '', undefined, { numeric: true, sensitivity: 'base' });
+      });
+
+      const tracks: Track[] = sortedFiles.map((f: any) => ({
           id: f.id,
           filename: f.filename,
           duration: f.duration || 0,
@@ -126,11 +141,12 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           format: f.format
       }));
 
-      // Calculate Chapters based on tracks (Auto-generate chapters if tracks > 1)
+      // Calculate Chapters based on ordered tracks (auto-generate chapters if tracks > 1)
       let accumulatedTime = 0;
       const chapters: Chapter[] = tracks.map(t => {
+          const cleanName = t.filename.replace(/\.[^/.]+$/, "").replace(/^\d+[\s.-]+/, "");
           const c = {
-              title: t.filename.replace(/\.[^/.]+$/, "").replace(/^\d+[\s.-]+/, ""),
+              title: cleanName || t.filename,
               startTime: accumulatedTime,
               duration: t.duration
           };
@@ -138,18 +154,26 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           return c;
       });
 
+      const progress = b.progress || 0;
       return {
           id: b.id.toString(),
           title: b.title,
           author: b.author || 'Unknown',
           coverUrl: b.coverUrl || 'https://placehold.co/400x400',
           duration: b.duration || accumulatedTime,
-          progress: 0, // Will be merged from local history
+          progress,
           addedAt: new Date(b.createdAt).getTime(),
           description: b.description,
           tracks: tracks,
           chapters: chapters,
-          isLiked: false
+          isLiked: false,
+          folderPath: b.folderPath,
+          scrapeConfidence: b.scrapeConfidence,
+          metadataSource: b.metadataSource,
+          reviewNeeded: b.reviewNeeded,
+          tags: b.tags,
+          scrapeConfig: b.scrapeConfig,
+          lastPlayedAt: b.lastPlayedAt ? new Date(b.lastPlayedAt).getTime() : null
       };
   };
 
@@ -166,14 +190,14 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               const localLib: Book[] = localLibStr ? JSON.parse(localLibStr) : [];
               const localMap = new Map(localLib.map((b) => [b.id, b]));
 
-              const mergedBooks = remoteBooks.map((rb: Book) => {
+                const mergedBooks = remoteBooks.map((rb: Book) => {
                   if (localMap.has(rb.id)) {
                       const lb = localMap.get(rb.id)!;
                       return {
                           ...rb,
-                          progress: lb.progress,
+                          progress: rb.progress || lb.progress,
                           isLiked: lb.isLiked,
-                          bookmarks: lb.bookmarks
+                          bookmarks: lb.bookmarks,
                       };
                   }
                   return rb;
@@ -270,10 +294,57 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, []);
 
   const getBook = useCallback((id: string | null) => {
-      return booksRef.current.find(b => b.id === id); 
-  }, []); 
+      return booksRef.current.find(b => b.id === id);
+  }, []);
+
+  const persistProgressNow = useCallback(() => {
+      const snapshot = stateRef.current;
+      if (!snapshot.currentBookId) return;
+      const book = getBook(snapshot.currentBookId);
+      if (!book) return;
+
+      const payload = JSON.stringify({
+          currentTime: snapshot.currentTime,
+          duration: book.duration,
+          isFinished: snapshot.currentTime >= book.duration - 1
+      });
+
+      if (navigator.sendBeacon) {
+          navigator.sendBeacon(`/api/progress/${snapshot.currentBookId}`, new Blob([payload], { type: 'application/json' }));
+      } else {
+          fetch(`/api/progress/${snapshot.currentBookId}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: payload
+          }).catch(() => {});
+      }
+  }, [getBook]);
+
+  useEffect(() => {
+      const handleVisibility = () => {
+          if (document.visibilityState === 'hidden') {
+              persistProgressNow();
+          }
+      };
+      const handleUnload = () => persistProgressNow();
+      document.addEventListener('visibilitychange', handleVisibility);
+      window.addEventListener('beforeunload', handleUnload);
+      return () => {
+          document.removeEventListener('visibilitychange', handleVisibility);
+          window.removeEventListener('beforeunload', handleUnload);
+      };
+  }, [persistProgressNow]);
 
   // --- Actions (Stable References via useCallback) ---
+
+  const computeSmartRewind = (pausedAt: number | null) => {
+      if (!pausedAt) return 0;
+      const diffMs = Date.now() - pausedAt;
+      if (diffMs > 24 * 60 * 60 * 1000) return 60;
+      if (diffMs > 60 * 60 * 1000) return 30;
+      if (diffMs > 5 * 60 * 1000) return 10;
+      return 0;
+  };
 
   const showToast = useCallback((msg: string, type: 'success' | 'error' | 'info' = 'info') => {
       const id = Date.now().toString();
@@ -282,6 +353,39 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, []);
 
   const removeToast = useCallback((id: string) => setToasts(prev => prev.filter(t => t.id !== id)), []);
+
+  // --- Sleep Timer / End-of-chapter watchdog ---
+  useEffect(() => {
+      if (!state.sleepTimer && !state.sleepEndOfChapter) {
+          sleepTriggeredRef.current = false;
+          return;
+      }
+
+      const interval = setInterval(() => {
+          const book = getBook(state.currentBookId);
+          const now = Date.now();
+
+          if (state.sleepTimer && now >= state.sleepTimer && !sleepTriggeredRef.current) {
+              audioRef.current?.pause();
+              setState(prev => ({ ...prev, isPlaying: false, sleepTimer: null, sleepEndOfChapter: false }));
+              sleepTriggeredRef.current = true;
+              showToast('已按定时休眠暂停播放', 'info');
+              return;
+          }
+
+          if (state.sleepEndOfChapter && book?.chapters?.length && state.currentBookId) {
+              const active = book.chapters.find(c => state.currentTime >= c.startTime && state.currentTime < c.startTime + c.duration);
+              if (!active && !sleepTriggeredRef.current) {
+                  audioRef.current?.pause();
+                  setState(prev => ({ ...prev, isPlaying: false, sleepTimer: null, sleepEndOfChapter: false }));
+                  sleepTriggeredRef.current = true;
+                  showToast('本章播放完毕，已为你暂停', 'info');
+              }
+          }
+      }, 700);
+
+      return () => clearInterval(interval);
+  }, [getBook, showToast, state.currentBookId, state.currentTime, state.sleepEndOfChapter, state.sleepTimer]);
 
   const playBook = useCallback((bookId: string) => {
       const book = booksRef.current.find(b => b.id === bookId);
@@ -322,6 +426,7 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                   currentTime: resumeTime,
                   duration: book.duration,
                   isPlaying: true,
+                  lastPausedAt: null,
                   abLoop: { start: null, end: null, active: false }
               };
           } else if (book.audioUrl) {
@@ -339,6 +444,7 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                   currentTime: resumeTime,
                   duration: book.duration,
                   isPlaying: true,
+                  lastPausedAt: null,
                   abLoop: { start: null, end: null, active: false }
               };
           } else {
@@ -392,27 +498,32 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const togglePlay = useCallback(() => setState(prev => {
       if (prev.currentBookId) {
-          if (prev.isPlaying) audioRef.current?.pause();
-          else audioRef.current?.play();
-          return { ...prev, isPlaying: !prev.isPlaying };
+          if (prev.isPlaying) {
+              audioRef.current?.pause();
+              return { ...prev, isPlaying: false, lastPausedAt: Date.now() };
+          }
+
+          const rewind = computeSmartRewind(prev.lastPausedAt ?? null);
+          if (rewind > 0) {
+              setTimeout(() => seek(Math.max(0, prev.currentTime - rewind), true), 0);
+          }
+
+          audioRef.current?.play();
+          return { ...prev, isPlaying: true, lastPausedAt: null };
       }
       return prev;
-  }), []);
+  }), [computeSmartRewind, seek]);
 
   const setVolume = useCallback((v: number) => setState(prev => ({...prev, volume: v})), []);
   const setSpeed = useCallback((s: number) => setState(prev => ({...prev, speed: s})), []);
   const undoSeek = useCallback(() => setState(prev => {
       if (prev.lastSeekPosition !== null) {
-          // This actually needs to call the 'seek' logic logic, which is hard inside setState.
-          // Simplification: trigger an effect or just mutate ref? 
-          // For now, we will perform the seek side effect:
           const t = prev.lastSeekPosition;
-          if (audioRef.current) audioRef.current.currentTime = t; // Approximate for single track
-          // Ideally we call the full seek logic, but to keep this stable we do:
-          return { ...prev, currentTime: t, lastSeekPosition: null };
+          setTimeout(() => seek(t, true), 0);
+          return { ...prev, lastSeekPosition: null };
       }
       return prev;
-  }), []);
+  }), [seek]);
   
   const updateBook = useCallback((b: Book) => {
       setBooks(prev => {
@@ -479,6 +590,7 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   
   const setSleepTimer = useCallback((m: number|null, e: boolean = false) => {
      const t = m ? Date.now() + m * 60000 : null;
+     sleepTriggeredRef.current = false;
      setState(prev => ({...prev, sleepTimer: t, sleepEndOfChapter: e}));
   }, []);
   
@@ -578,12 +690,30 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     volume: prev.volume,
                     speed: prev.speed
                 }));
+
+                const now = Date.now();
+                if (now - backendProgressThrottleRef.current > 3000 && prev.currentBookId) {
+                    backendProgressThrottleRef.current = now;
+                    const payload = JSON.stringify({ currentTime: globalTime, duration: book.duration, isFinished: globalTime >= book.duration - 1 });
+                    if (navigator.sendBeacon) {
+                        navigator.sendBeacon(`/api/progress/${prev.currentBookId}`, new Blob([payload], { type: 'application/json' }));
+                    } else {
+                        fetch(`/api/progress/${prev.currentBookId}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: payload
+                        }).catch(() => {});
+                    }
+                }
             }, 1000);
 
             return { ...prev, currentTime: globalTime };
         });
-        
-        setDailyProgress(prev => prev + 0.1);
+
+        const now = Date.now();
+        const deltaSec = Math.max(0, (now - lastProgressTickRef.current) / 1000);
+        lastProgressTickRef.current = now;
+        setDailyProgress(prev => prev + deltaSec);
     };
 
     const handleEnded = () => {
