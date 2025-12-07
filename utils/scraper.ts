@@ -27,6 +27,8 @@ export interface ScrapeConfig {
   preferredSources?: string[];
 }
 
+const API_BASE = '/api/metadata/search';
+
 // 优化 1: 高清封面替换逻辑 (iTunes 返回的通常是 100x100)
 const getHighResItunesCover = (url: string) => {
   return url.replace('100x100bb', '600x600bb').replace('60x60bb', '600x600bb');
