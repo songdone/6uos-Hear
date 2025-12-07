@@ -1,0 +1,32 @@
+# 依赖包
+node_modules/
+server/node_modules/
+
+# 构建产物
+dist/
+build/
+.DS_Store
+
+# 环境变量 (保护你的 API Key)
+.env
+.env.local
+.env.*.local
+
+# 数据库文件
+*.sqlite
+*.db
+*.sqlite3
+server/database.sqlite
+
+# 媒体库挂载目录 (防止上传几百 G 的音频)
+mnt/
+library/
+uploads/
+
+# IDE 配置
+.vscode/
+.idea/
+
+# 日志
+*.log
+npm-debug.log*
